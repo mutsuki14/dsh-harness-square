@@ -20,10 +20,14 @@
 
 在 harness2 中插件是 TS 代码；本插件改为声明式 JSON 策略，以免模型生成的代码在 Cordis 进程内执行。
 
-执行器有三种，保真度依次升高：
-- `llm`：单次 `ctx.llm` 调用；
-- `workflow`：通过 `ctx.workflowEngine` 启动一个全新的子 Agent；
-- `headless`：以 `dsh --profile headless --json` 子进程运行。
+执行器有三种：
+- `headless`（默认）：每次试跑起一个独立的 `dsh --profile headless --json` 进程，有独立工作区和独立的 `.git` 项目根，互不干扰。可以用 `workspace` 参数把任务文件复制进去。
+- `workflow`：调用方的子 Agent，和调用方共用工作目录，只靠提示要求它在 `.harness2-probes/<runId>/` 里工作。
+- `llm`：单次模型调用，没有工具，成本最低。
+
+skill 目录名必须是短横线命名（如 `ledger-total`），dsh 会静默忽略其他命名。
+
+每次运行都会报告 token 用量；配置 `improverPrice` / `solverPrice`（或命令行 `--price`）后还会报告金额。
 
 ## 使用
 

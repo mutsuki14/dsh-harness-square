@@ -47,11 +47,15 @@ How each harness component maps onto DSH extension points (`harness2-runtime`):
 
 In harness2, plugins are TypeScript files. Here they are **declarative JSON policies** instead, so that model-written code never runs inside the Cordis process. They still act in the tool loop and are validated before they are activated.
 
-Probe executors, from cheapest to most faithful:
+Probe executors:
 
-- `llm`: a single `ctx.llm` completion;
-- `workflow`: a fresh DSH child agent started through `ctx.workflowEngine` from the calling agent;
-- `headless`: a real `dsh --profile headless --json` run. The harness is installed as `AGENTS.md` plus `.agents/skills/`.
+| executor | isolation | notes |
+|---|---|---|
+| `headless` (**default**) | full: one `dsh --profile headless --json` process per probe, own workspace, own `.git` project root | harness installed as `AGENTS.md` + `.agents/skills/`; pass `workspace` to copy the task's files in (skips `.git`, `node_modules`; capped at 2000 files / 50 MB); token usage read from `step_end` events |
+| `workflow` | instruction-level only: a child agent of the caller sharing its cwd | probes are told to work in `.harness2-probes/<runId>/`; token usage not observable |
+| `llm` | n/a: one `ctx.llm` completion, no tools | cheapest; flagged `toolless`, so the improver may not add scripts or write "no tools available" into the harness, and raw tool-call markup counts as not delivered |
+
+Skill directory names must be kebab-case (`ledger-total`, not `ledger_total`): dsh's skill registry silently ignores anything else, so the surface rejects it.
 
 ## Install into a DSH profile
 
@@ -70,10 +74,12 @@ The bundle needs a model provider. The defaults use `deepseek-official` with `de
 |---|---|---|
 | `improverProvider` / `improverModel` | `deepseek-official` / `deepseek-v4-pro` | propose / compose / select / reflect |
 | `solverProvider` / `solverModel` | `deepseek-official` / `deepseek-flash` | `llm` executor |
-| `executor` | `workflow` | `workflow` \| `llm` \| `headless` (`workflow` falls back to `llm` when there is no calling agent) |
+| `executor` | `headless` | `headless` \| `workflow` \| `llm` (`workflow` falls back to `llm` when there is no calling agent) |
 | `k`, `maxK`, `mode` | `1`, `3`, `parallel` | recursion budget, ceiling, mode |
 | `autoActivate`, `defaultDomain` | `true`, `general` | activate the adopted harness; default domain |
 | `root` | `$DSH_HOME/harness2` | library, active harnesses, runs, audit |
+| `headlessCommand` | `dsh` | how the headless executor launches dsh |
+| `improverPrice` / `solverPrice` | unset | optional `{input, output}` USD per 1M tokens; without them runs report tokens only (no built-in price table) |
 
 Events: `harness2/progress` and `harness2/activated`.
 
@@ -86,7 +92,18 @@ DEEPSEEK_API_KEY=... node bin/harness2-dsh.js run --tasks examples/tasks.json --
 node bin/harness2-dsh.js run --tasks examples/tasks.json --executor headless   # probes via `dsh` CLI
 ```
 
+Add `--price <in>,<out>` (USD per 1M tokens) to also report cost; token counts are always reported.
+
 Run artefacts are written to `runs/<task>/<mode>-k<k>/`: every harness tree, every rollout, `mode.json`, `selection.json` and `summary.json`. The library lives in `library/<domain>/`.
+
+## Verified against real DeepSeek Harness
+
+Tested in a sandbox with `@deepseek-ai/dsh@0.2.1-rc.4` and `deepseek-flash`:
+
+- the bundle installs with `dsh plugin add` and appears in `--dump-config`; all plugins load
+- the system-prompt section, skill tool and pre/post/stop policy hooks work on dsh's real event pipeline
+- a real dsh agent called `harness2_improve` itself: 4 isolated headless probes, each with its own `.git`, a seeded copy of the input file, and a correct answer; the caller's workspace was left untouched
+- headless probes load harness skills through dsh's own `skill` tool and run `bash` under bubblewrap
 
 ## Development
 
