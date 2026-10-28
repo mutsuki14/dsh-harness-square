@@ -119,7 +119,7 @@ export async function deepseekChat(opts: DeepSeekApiOptions, system: string, pro
   signal?.addEventListener('abort', onAbort, { once: true })
   try {
     const body: Record<string, unknown> = {
-      model: opts.model ?? 'deepseek-chat',
+      model: opts.model ?? 'deepseek-flash',
       messages: [
         ...(system ? [{ role: 'system', content: system }] : []),
         { role: 'user', content: prompt },

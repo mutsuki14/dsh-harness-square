@@ -18,6 +18,18 @@ import { autotrigger, diversity, isUnchanged, validate, type HarnessTree, type S
 
 export const STAGE_ATTEMPTS = 2
 
+/** Appended to improvement missions when the executor has no tool loop. */
+export const TOOLLESS_NOTE = `# RUNTIME LIMITS OF THIS SOLVER
+
+The solver for this task runs as ONE model completion with NO tools: it cannot run scripts, read
+files, call \`harness2_skill\`, or delegate to a sub-agent. Skills and sub-agent briefs are inlined
+into its prompt as text, and the source material is inlined into the request. Do not add any
+instruction that requires a tool call before answering -- a run that emits a tool call delivers
+nothing. Encode procedure as prose the solver can follow in-context, and do not add scripts.
+
+This limit belongs to the PROBE, not to the harness: an adopted harness is later activated for
+agents that DO have tools. Never write "no tools are available" or similar into any component.`
+
 export type Mode = 'parallel' | 'sequential'
 
 export interface Stage {
@@ -151,7 +163,7 @@ export async function runStage(ctx: RecursionContext, spec: StageSpec): Promise<
       const req: Parameters<Improver['call']>[0] = {
         label: `${spec.label}.a${attempt}`,
         system: P.SYSTEM_IMPROVER,
-        mission: `${spec.job}\n\n${evidence}${retry}`,
+        mission: `${spec.job}${ctx.executor.toolless ? `\n\n${TOOLLESS_NOTE}` : ''}\n\n${evidence}${retry}`,
       }
       if (ctx.signal) req.signal = ctx.signal
       const reply = await ctx.improver.call(req)

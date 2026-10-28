@@ -22,6 +22,22 @@ import type { AgentLike, LlmService, WorkflowEngine } from './types.ts'
 
 type ExecResult = Omit<Rollout, 'label' | 'runId'>
 
+/** Raw tool-call markup a model emits when it wants a tool the runtime does not provide (DeepSeek DSML, generic forms). */
+const TOOL_CALL_MARKUP = /<\uFF5C+DSML\uFF5C+|<\uFF5Ctool[\u2581_]calls?|<\|tool_calls?(?:_begin)?\|>|<tool_call>|<function_calls>/
+
+/** Whether a completion is an unexecuted tool call rather than an answer. */
+export function isUnexecutedToolCall(text: string): boolean {
+  return TOOL_CALL_MARKUP.test(text)
+}
+
+/** Shape a toolless completion into a rollout, never counting dead tool-call markup as a deliverable. */
+export function toollessRollout(text: string, trajectory: string, wallMs: number): ExecResult {
+  if (isUnexecutedToolCall(text)) {
+    return { ok: true, delivered: false, deliverable: '', trajectory: `${trajectory}\n[RUNTIME] the solver emitted a tool call, but this executor has no tool loop; nothing was delivered`, wallMs, error: 'unexecuted tool call (toolless executor)' }
+  }
+  return { ok: true, delivered: text.trim().length > 0, deliverable: text, trajectory, wallMs }
+}
+
 function taskMessage(task: TaskSpec): string {
   const sources = Object.entries(task.sources ?? {})
   return [
@@ -43,6 +59,7 @@ export interface LlmExecutorOptions {
 /** Single completion: the cheapest probe; it sees the harness but has no tool loop. */
 export class LlmExecutor implements Executor {
   readonly name = 'dsh-llm'
+  readonly toolless = true
   private readonly llm: LlmService
   private readonly opts: LlmExecutorOptions
 
@@ -60,14 +77,7 @@ export class LlmExecutor implements Executor {
       if (this.opts.maxTokens !== undefined) args.maxTokens = this.opts.maxTokens
       if (signal) args.signal = signal
       const r = await streamText(this.llm, args)
-      const delivered = r.text.trim().length > 0
-      return {
-        ok: true,
-        delivered,
-        deliverable: r.text,
-        trajectory: `[SYSTEM] harness rendered (${system.length} chars)\n[USER] ${task.prompt.slice(0, 500)}\n[ASSISTANT]\n${r.text}`,
-        wallMs: Date.now() - started,
-      }
+      return toollessRollout(r.text, `[SYSTEM] harness rendered (${system.length} chars)\n[USER] ${task.prompt.slice(0, 500)}\n[ASSISTANT]\n${r.text}`, Date.now() - started)
     } catch (e) {
       return { ok: false, delivered: false, deliverable: '', trajectory: '', error: (e as Error).message, wallMs: Date.now() - started }
     }

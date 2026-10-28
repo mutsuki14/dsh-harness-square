@@ -86,6 +86,11 @@ export interface Rollout {
 /** Runs the task once under a harness. Must never throw for ordinary agent failure. */
 export interface Executor {
   readonly name: string
+  /**
+   * True when the solver is a single completion with no tool loop. The improver is then told
+   * not to prescribe tool calls, which such a solver can only emit as dead markup.
+   */
+  readonly toolless?: boolean
   execute(task: TaskSpec, harness: HarnessTree, runId: string, signal?: AbortSignal): Promise<Omit<Rollout, 'label' | 'runId'>>
 }
 

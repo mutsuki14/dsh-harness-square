@@ -14,7 +14,7 @@ import { Harness2 } from '../core/pipeline.ts'
 import type { Mode } from '../core/recursion.ts'
 import type { Executor, TaskSpec, WorkPrompts } from '../core/spec.ts'
 import { DEFAULT_BASE_TREE, DEFAULT_WORK } from '../dsh/defaults.ts'
-import { HeadlessExecutor } from '../dsh/executors.ts'
+import { HeadlessExecutor, toollessRollout } from '../dsh/executors.ts'
 import { DeepSeekApiImprover, deepseekChat } from '../dsh/improver.ts'
 import { renderHarnessPrompt } from '../dsh/render.ts'
 
@@ -26,8 +26,8 @@ const { positionals, values } = parseArgs({
     out: { type: 'string' },
     tasks: { type: 'string' },
     executor: { type: 'string', default: 'llm' },
-    model: { type: 'string', default: process.env['HARNESS2_IMPROVER_MODEL'] ?? 'deepseek-reasoner' },
-    'solver-model': { type: 'string', default: process.env['HARNESS2_SOLVER_MODEL'] ?? 'deepseek-chat' },
+    model: { type: 'string', default: process.env['HARNESS2_IMPROVER_MODEL'] ?? 'deepseek-v4-pro' },
+    'solver-model': { type: 'string', default: process.env['HARNESS2_SOLVER_MODEL'] ?? 'deepseek-flash' },
     help: { type: 'boolean', short: 'h' },
   },
 })
@@ -64,10 +64,12 @@ if (cmd === 'demo') {
       ? new HeadlessExecutor({ workRoot: join(out, 'workspaces'), command: process.env['DSH_COMMAND'] ?? 'dsh' })
       : {
           name: 'deepseek-api',
+          toolless: true,
           async execute(task, harness) {
+            const started = Date.now()
             try {
               const r = await deepseekChat({ apiKey, model: values['solver-model'], ...(baseUrl ? { baseUrl } : {}) }, renderHarnessPrompt(harness), task.prompt + Object.entries(task.sources ?? {}).map(([n, b]) => `\n<source name="${n}">\n${b}\n</source>`).join(''))
-              return { ok: true, delivered: !!r.text.trim(), deliverable: r.text, trajectory: `[ASSISTANT]\n${r.text}` }
+              return toollessRollout(r.text, `[ASSISTANT]\n${r.text}`, Date.now() - started)
             } catch (e) {
               return { ok: false, delivered: false, deliverable: '', trajectory: '', error: (e as Error).message }
             }

@@ -55,3 +55,16 @@ for (const mode of ['parallel', 'sequential'] as const) {
     })
   }
 }
+
+test('toolless executor puts the runtime-limits note in every improvement mission', async () => {
+  const { TOOLLESS_NOTE } = await import('../src/core/recursion.ts')
+  const seen: string[] = []
+  const imp = new DemoImprover()
+  const spy = { name: 'spy', call: async (req: any) => { seen.push(req.mission); return imp.call(req) } }
+  const exec = Object.assign(new DemoExecutor(), { toolless: true })
+  const h2 = new Harness2({ executor: exec, improver: spy, work: { work: 'reconcile signed ledgers' }, baseTree: DEMO_BASE, k: 1, reflect: false })
+  await h2.runTask(DEMO_TASKS[0]!)
+  const stageMissions = seen.filter(m => m.includes('# HOW TO REPLY'))
+  assert.equal(stageMissions.length, 3)
+  assert.ok(stageMissions.every(m => m.includes(TOOLLESS_NOTE)))
+})

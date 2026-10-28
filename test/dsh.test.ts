@@ -41,10 +41,18 @@ test('bundle mounts on Cordis: section, tools, policies, improvement + activatio
   const post = await root.waterfall('tools/post-execute' as any, { name: 'write', arguments: {} } as any, { isError: false, content: [{ type: 'text', text: 'ok' }] } as any, async () => ({ kind: 'accept' }) as any)
   assert.match(JSON.stringify(post), /re-open the file/)
   assert.match(await ctx.tools.defs.get('harness2_status').execute({}), /When a ledger includes credits/)
-  await root.registry.get(runtime as any)?.dispose?.()
 })
 
 test('headless --json events fold into a trajectory', () => {
   const f = foldHeadlessEvents(['{"type":"session","sessionId":"s1"}', '{"type":"tool_call","tool":"bash","input":{"command":"ls"}}', '{"type":"tool_result","status":"completed","result":"a.txt"}', '{"type":"final","text":"done"}'])
   assert.equal(f.final, 'done'); assert.equal(f.sessionId, 's1'); assert.match(f.trajectory, /\[ACTION\] bash/)
+})
+
+test('toolless executors never count unexecuted tool-call markup as delivered', async () => {
+  const { isUnexecutedToolCall, toollessRollout } = await import('../src/dsh/executors.ts')
+  assert.ok(isUnexecutedToolCall('<\uFF5C\uFF5CDSML\uFF5C\uFF5C calls>\n<invoke name="bash">'))
+  assert.ok(!isUnexecutedToolCall('Total: 85.15'))
+  const r = toollessRollout('I will read the file.\n<\uFF5C\uFF5CDSML\uFF5C\uFF5C calls>', '', 1)
+  assert.equal(r.delivered, false)
+  assert.equal(toollessRollout('Total: 1.00', '', 1).delivered, true)
 })
