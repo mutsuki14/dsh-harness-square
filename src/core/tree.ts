@@ -25,6 +25,8 @@ import { validatePolicyPlugin } from './policy.ts'
 export type HarnessTree = Record<string, string>
 
 const NAME = '[a-z0-9][a-z0-9_\\-]*'
+/** Skill names follow DeepSeek Harness' skill grammar (kebab-case); dsh ignores any other name. */
+const SKILL_NAME = '[a-z0-9]+(?:-[a-z0-9]+)*'
 
 /** The editable surface: paths, caps and per-component rules. */
 export interface SurfaceSpec {
@@ -75,8 +77,8 @@ function rx(surface: SurfaceSpec): SurfaceRegexes {
   const sd = esc(surface.skillDir)
   const sc = esc(surface.scriptDir)
   cached = {
-    skill: new RegExp(`^${sd}/(${NAME})/SKILL\\.md$`),
-    skillScript: new RegExp(`^${sd}/${NAME}/scripts/[A-Za-z0-9_.\\-]+$`),
+    skill: new RegExp(`^${sd}/(${SKILL_NAME})/SKILL\\.md$`),
+    skillScript: new RegExp(`^${sd}/${SKILL_NAME}/scripts/[A-Za-z0-9_.\\-]+$`),
     subagent: new RegExp(`^${esc(surface.subagentDir)}/(${NAME})/AGENT\\.md$`),
     script: new RegExp(`^${sc}/[a-z0-9_][a-z0-9_\\-]*\\.(?:py|js|mjs|sh)$`),
     plugin: new RegExp(`^${esc(surface.pluginDir)}/(${NAME})\\.json$`),

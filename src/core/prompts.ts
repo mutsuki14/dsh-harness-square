@@ -51,7 +51,8 @@ different runtime cost and a different reach:
 
 The three that are easy to get wrong:
 
-\`skills/\` -- needs frontmatter with \`name:\` equal to the directory and a \`description:\`. It
+\`skills/\` -- the directory name must be kebab-case (lowercase letters, digits and single hyphens,
+e.g. \`doc-review\`; never underscores) or DeepSeek Harness ignores the skill. Needs frontmatter with \`name:\` equal to the directory and a \`description:\`. It
 must be named in always-on text (usually a trigger line in \`tool_guidance.md\`), and any helper
 it calls must travel with it under \`skills/<name>/scripts/\`.
 
@@ -84,9 +85,9 @@ the agent's own output budget. Prefer, in this order:
 
 Emit ONLY the files you change, each with its COMPLETE new content:
 
-    <file path="skills/doc_review/SKILL.md">
+    <file path="skills/doc-review/SKILL.md">
     ---
-    name: doc_review
+    name: doc-review
     description: ...
     ---
     ...

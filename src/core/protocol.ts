@@ -4,7 +4,7 @@
  * harness2 hands a CLI agent a directory and harvests the edited `context/harness/` tree.
  * A DSH improver is a single model call, so edits travel as text instead:
  *
- *     <file path="skills/doc_review/SKILL.md">
+ *     <file path="skills/doc-review/SKILL.md">
  *     ...full new content...
  *     </file>
  *     <delete path="memory.md"/>

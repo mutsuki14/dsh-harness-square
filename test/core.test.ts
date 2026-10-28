@@ -12,7 +12,8 @@ import { validatePolicyPlugin } from '../src/core/policy.ts'
 import { checkWorkPrompts } from '../src/core/spec.ts'
 
 test('surface admits only editable paths', () => {
-  assert.ok(isAllowed(DEFAULT_SURFACE, 'skills/doc_review/SKILL.md'))
+  assert.ok(isAllowed(DEFAULT_SURFACE, 'skills/doc-review/SKILL.md'))
+  assert.ok(!isAllowed(DEFAULT_SURFACE, 'skills/doc_review/SKILL.md'), 'dsh rejects non-kebab skill names')
   assert.ok(isAllowed(DEFAULT_SURFACE, 'plugins/verify.json'))
   assert.ok(!isAllowed(DEFAULT_SURFACE, '../etc/passwd'))
   assert.ok(!isAllowed(DEFAULT_SURFACE, 'plugins/x.ts'))

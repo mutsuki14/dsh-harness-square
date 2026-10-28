@@ -74,3 +74,13 @@ test('service config: loads with no price (regression) and normalises a partial 
     assert.deepEqual(svc.config.solverPrice, (extra as any).solverPrice?.input !== undefined ? { input: 0.1, output: 0.4 } : undefined)
   }
 })
+
+test('headless install makes the workspace its own project root with dsh-discoverable skills', async () => {
+  const { HeadlessExecutor } = await import('../src/dsh/executors.ts')
+  const { existsSync, readFileSync } = await import('node:fs')
+  const ws = mkdtempSync(join(tmpdir(), 'h2ws-'))
+  HeadlessExecutor.install(ws, { 'systemprompt.md': 'Role.', 'tool_guidance.md': 'Use skill ledger-total.', 'skills/ledger-total/SKILL.md': '---\nname: ledger-total\ndescription: d\n---\nx' })
+  assert.ok(existsSync(join(ws, '.git')))
+  assert.ok(existsSync(join(ws, '.agents/skills/ledger-total/SKILL.md')))
+  assert.match(readFileSync(join(ws, 'AGENTS.md'), 'utf8'), /Role\./)
+})

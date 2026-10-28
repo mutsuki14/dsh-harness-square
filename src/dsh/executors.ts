@@ -11,7 +11,7 @@
  * infrastructure bugs throw (and the recursion still records them as dead rollouts).
  */
 
-import { spawn } from 'node:child_process'
+import { spawn, spawnSync } from 'node:child_process'
 import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { addUsage, costOf, ZERO_USAGE, type Executor, type Price, type Rollout, type TaskSpec, type TokenUsage } from '../core/spec.ts'
@@ -271,8 +271,20 @@ export class HeadlessExecutor implements Executor {
     this.opts = opts
   }
 
+  /**
+   * Make a workspace its own project root. dsh resolves the project root (for `.agents/skills`
+   * and the AGENTS.md chain) as the nearest ancestor containing `.git`; a workspace nested in some
+   * other checkout would otherwise read -- and let the agent touch -- that outer repository.
+   */
+  static isolate(workspace: string): void {
+    if (existsSync(join(workspace, '.git'))) return
+    const r = spawnSync('git', ['init', '-q'], { cwd: workspace, stdio: 'ignore' })
+    if (r.status !== 0) mkdirSync(join(workspace, '.git'), { recursive: true })
+  }
+
   /** Install a harness into a workspace using the DSH-native discovery paths. */
   static install(workspace: string, harness: HarnessTree, surface: SurfaceSpec = DEFAULT_SURFACE): void {
+    HeadlessExecutor.isolate(workspace)
     writeTree(surface, harness, join(workspace, '.harness2'))
     writeFileSync(join(workspace, 'AGENTS.md'), `${renderHarnessPrompt(harness, surface, { inlineSkills: false })}\n`, 'utf8')
     for (const [rel, text] of Object.entries(harness)) {
