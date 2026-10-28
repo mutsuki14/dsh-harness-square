@@ -12,7 +12,7 @@
  */
 
 import { spawn, spawnSync } from 'node:child_process'
-import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { addUsage, costOf, ZERO_USAGE, type Executor, type Price, type Rollout, type TaskSpec, type TokenUsage } from '../core/spec.ts'
 import { DEFAULT_SURFACE, writeTree, type HarnessTree, type SurfaceSpec } from '../core/tree.ts'
@@ -116,6 +116,8 @@ const schema = {
 phase('Rollout')
 const prompt = [
   'You are executing one task under the operating harness below. Follow it.',
+  'ISOLATION: you are one of several independent probe runs of the same task. Before doing anything else, create the directory ' + args.scratch + ' and copy into it only the input files the task names. Do ALL work, scripts and outputs inside that directory, refer to files there, and never create, modify or read other files you or another run may have produced elsewhere in the working directory.',
+  'The <harness> below is the ONLY harness that applies to this run. Ignore any other operating-harness text in your system prompt, and do not call the harness2_skill tool: every skill this harness defines is inlined below.',
   '<harness>\n' + args.harness + '\n</harness>',
   '<task>\n' + args.task + '\n</task>',
   'Do the work with your tools. When done, return: deliverable = the complete final artifact as text ' +
@@ -144,7 +146,7 @@ export class WorkflowExecutor implements Executor {
     const req: Parameters<WorkflowEngine['start']>[0] = {
       script: ROLLOUT_SCRIPT,
       meta: { name: 'harness2-rollout', description: `Harness2 probe rollout ${runId}`, phases: [{ title: 'Rollout' }] },
-      args: { harness: renderHarnessPrompt(harness, this.opts.surface ?? DEFAULT_SURFACE), task: taskMessage(task) },
+      args: { harness: renderHarnessPrompt(harness, this.opts.surface ?? DEFAULT_SURFACE), task: taskMessage(task), scratch: `.harness2-probes/${runId.replace(/[^\w.\-]/g, '_')}` },
       subagentProvider: this.opts.subagentProvider ?? 'spawn',
       maxTotalAgents: 1,
       parent: this.parent,
@@ -271,6 +273,29 @@ export class HeadlessExecutor implements Executor {
     this.opts = opts
   }
 
+  /** Directories never copied from a seed workspace: VCS data, dependencies, earlier probe output. */
+  static readonly SEED_SKIP = new Set(['.git', 'node_modules', '.harness2', '.harness2-probes', '.venv', '__pycache__', '.dsh'])
+
+  /** Copy a seed directory into a probe workspace, skipping heavy/private dirs and capping size. */
+  static seed(src: string, dest: string, maxFiles = 2000, maxBytes = 50 * 1024 * 1024): void {
+    let files = 0
+    let bytes = 0
+    cpSync(src, dest, {
+      recursive: true,
+      filter: (from: string) => {
+        const base = from.split(/[\\/]/).pop() ?? ''
+        if (from !== src && HeadlessExecutor.SEED_SKIP.has(base)) return false
+        const st = statSync(from)
+        if (st.isFile()) {
+          files++
+          bytes += st.size
+          if (files > maxFiles || bytes > maxBytes) throw new Error(`seed workspace ${src} exceeds ${maxFiles} files / ${maxBytes} bytes; pass a smaller directory`)
+        }
+        return true
+      },
+    })
+  }
+
   /**
    * Make a workspace its own project root. dsh resolves the project root (for `.agents/skills`
    * and the AGENTS.md chain) as the nearest ancestor containing `.git`; a workspace nested in some
@@ -301,7 +326,7 @@ export class HeadlessExecutor implements Executor {
     const ws = join(this.opts.workRoot, runId)
     rmSync(ws, { recursive: true, force: true })
     mkdirSync(ws, { recursive: true })
-    if (this.opts.seedDir && existsSync(this.opts.seedDir)) cpSync(this.opts.seedDir, ws, { recursive: true })
+    if (this.opts.seedDir && existsSync(this.opts.seedDir)) HeadlessExecutor.seed(this.opts.seedDir, ws)
     for (const [name, text] of Object.entries(task.sources ?? {})) {
       if (/^[\w.\-]+$/.test(name)) writeFileSync(join(ws, name), text, 'utf8')
     }

@@ -12,6 +12,8 @@
 
 import type { Context } from '@deepseek-ai/cordis'
 import Schema from '@deepseek-ai/schemastery'
+import { existsSync, statSync } from 'node:fs'
+import { isAbsolute } from 'node:path'
 import { renderTreeDiff } from '../core/protocol.ts'
 import type { Mode } from '../core/recursion.ts'
 import { inventory } from '../core/tree.ts'
@@ -52,7 +54,8 @@ export function apply(ctx: Context, config: Config): void {
       text:
         'Use harness2_improve ONLY when the human explicitly asks to improve, tune or "harness" how the agent works on a task. ' +
         'It runs the task several times under candidate harnesses (prompts, skills, scripts, sub-agent briefs, loop policies), ' +
-        'composes a refined harness from the behavioural contrasts, and activates it for the domain. It is expensive: say so before ' +
+        'composes a refined harness from the behavioural contrasts, and activates it for the domain. When the task works on local files, ' +
+        'pass the directory holding them as `workspace` so each isolated probe gets a copy. It is expensive: say so before ' +
         'using a budget k above 1. Use harness2_status to explain what the active harness contains.',
     })
   }
@@ -74,7 +77,8 @@ export function apply(ctx: Context, config: Config): void {
           sources: { type: 'object', additionalProperties: { type: 'string' }, description: 'Optional source material: name -> text.' },
           k: { type: 'integer', minimum: 1, maximum: 8, description: 'Task-level recursion budget (default from config; capped by maxK).' },
           mode: { type: 'string', enum: ['parallel', 'sequential'], description: 'parallel explores wider; sequential refines deeper.' },
-          executor: { type: 'string', enum: ['workflow', 'llm', 'headless'], description: 'How probes run (default from config).' },
+          executor: { type: 'string', enum: ['headless', 'workflow', 'llm'], description: 'How probes run (default from config).' },
+          workspace: { type: 'string', description: 'Absolute path of a directory holding the files the task works on; it is copied into every isolated probe workspace (.git and node_modules are skipped). Use the current working directory when the task refers to local files.' },
         },
         required: ['task'],
         additionalProperties: false,
@@ -87,7 +91,7 @@ export function apply(ctx: Context, config: Config): void {
         },
       },
       async execute(args, exec: ToolRunContext) {
-        const a = args as { task: string; domain?: string; work?: string; sources?: Record<string, string>; k?: number; mode?: Mode; executor?: ExecutorKind }
+        const a = args as { task: string; domain?: string; work?: string; sources?: Record<string, string>; k?: number; mode?: Mode; executor?: ExecutorKind; workspace?: string }
         const task = String(a.task ?? '').trim()
         if (!task) throw new Error('harness2_improve: task must be a non-empty string')
         const domain = (a.domain ?? svc.config.defaultDomain).trim() || svc.config.defaultDomain
@@ -103,6 +107,11 @@ export function apply(ctx: Context, config: Config): void {
         if (a.mode) req.mode = a.mode
         if (a.executor) req.executor = a.executor
         if (exec.agent) req.parent = exec.agent
+        if (a.workspace?.trim()) {
+          const ws = a.workspace.trim()
+          if (!isAbsolute(ws) || !existsSync(ws) || !statSync(ws).isDirectory()) throw new Error(`harness2_improve: workspace must be an existing absolute directory, got ${JSON.stringify(ws)}`)
+          req.seedDir = ws
+        }
         const r = await svc.improve(req)
         const diff = renderTreeDiff(before, r.adoptedTree, 200)
         const report = [

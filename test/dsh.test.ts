@@ -84,3 +84,16 @@ test('headless install makes the workspace its own project root with dsh-discove
   assert.ok(existsSync(join(ws, '.agents/skills/ledger-total/SKILL.md')))
   assert.match(readFileSync(join(ws, 'AGENTS.md'), 'utf8'), /Role\./)
 })
+
+test('headless seed copy skips .git/node_modules/probe output and enforces a size cap', async () => {
+  const { HeadlessExecutor } = await import('../src/dsh/executors.ts')
+  const { mkdirSync, writeFileSync, existsSync } = await import('node:fs')
+  const src = mkdtempSync(join(tmpdir(), 'h2seed-'))
+  for (const d of ['.git', 'node_modules/x', '.harness2-probes/old', 'data']) mkdirSync(join(src, d), { recursive: true })
+  writeFileSync(join(src, 'export.csv'), 'a'); writeFileSync(join(src, 'data/b.txt'), 'b'); writeFileSync(join(src, 'node_modules/x/i.js'), 'i')
+  const dest = mkdtempSync(join(tmpdir(), 'h2dest-'))
+  HeadlessExecutor.seed(src, dest)
+  assert.ok(existsSync(join(dest, 'export.csv')) && existsSync(join(dest, 'data/b.txt')))
+  assert.ok(!existsSync(join(dest, 'node_modules')) && !existsSync(join(dest, '.git')) && !existsSync(join(dest, '.harness2-probes')))
+  assert.throws(() => HeadlessExecutor.seed(src, mkdtempSync(join(tmpdir(), 'h2d2-')), 1), /exceeds/)
+})

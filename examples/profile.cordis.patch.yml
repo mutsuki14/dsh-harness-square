@@ -6,7 +6,8 @@
     improverModel: deepseek-v4-pro
     solverProvider: deepseek-official
     solverModel: deepseek-flash
-    executor: workflow
+    executor: headless
+    headlessCommand: dsh
     subagentProvider: spawn
     k: 2
     maxK: 3

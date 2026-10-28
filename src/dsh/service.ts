@@ -47,7 +47,11 @@ export interface Config {
   /** Model route for `llm` executor rollouts. */
   solverProvider: string
   solverModel: string
-  /** Default executor: `workflow` (a real DSH child agent; needs a calling agent), `llm` or `headless`. */
+  /**
+   * Default executor. `headless` (default): an isolated \`dsh --profile headless\` process per probe, with its
+   * own workspace and project root. `workflow`: a child agent of the caller -- shares the caller's
+   * working directory and process (isolation is instruction-level only). `llm`: one completion, no tools.
+   */
   executor: ExecutorKind
   /** Subagent provider used by the workflow executor. */
   subagentProvider: string
@@ -80,7 +84,7 @@ export const Config: Schema<Config> = Schema.object({
   improverModel: Schema.string().default('deepseek-v4-pro'),
   solverProvider: Schema.string().default('deepseek-official'),
   solverModel: Schema.string().default('deepseek-flash'),
-  executor: Schema.union(['workflow', 'llm', 'headless'] as const).default('workflow'),
+  executor: Schema.union(['headless', 'workflow', 'llm'] as const).default('headless'),
   subagentProvider: Schema.string().default('spawn'),
   headlessCommand: Schema.string().default('dsh'),
   k: Schema.number().step(1).min(1).max(8).default(1),
