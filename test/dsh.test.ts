@@ -97,3 +97,38 @@ test('headless seed copy skips .git/node_modules/probe output and enforces a siz
   assert.ok(!existsSync(join(dest, 'node_modules')) && !existsSync(join(dest, '.git')) && !existsSync(join(dest, '.harness2-probes')))
   assert.throws(() => HeadlessExecutor.seed(src, mkdtempSync(join(tmpdir(), 'h2d2-')), 1), /exceeds/)
 })
+
+test('headless install writes a probe patch only for harnesses with plugins; produced files are collected', async () => {
+  const { HeadlessExecutor, probeModulePath, snapshotFiles, producedFiles } = await import('../src/dsh/executors.ts')
+  const { existsSync, readFileSync, writeFileSync } = await import('node:fs')
+  const plain = mkdtempSync(join(tmpdir(), 'h2p1-'))
+  HeadlessExecutor.install(plain, { 'systemprompt.md': 'x' })
+  assert.ok(!existsSync(join(plain, '.harness2-probe.patch.yml')))
+  const withPolicy = mkdtempSync(join(tmpdir(), 'h2p2-'))
+  HeadlessExecutor.install(withPolicy, { 'systemprompt.md': 'x', 'plugins/safe.json': JSON.stringify({ description: 'd', rules: [{ on: 'pre', tool: 'bash', match: 'rm ', action: 'deny', message: 'no' }] }) })
+  const patch = readFileSync(join(withPolicy, '.harness2-probe.patch.yml'), 'utf8')
+  assert.ok(patch.includes(probeModulePath()) && patch.includes(join(withPolicy, '.harness2')))
+  assert.ok(existsSync(probeModulePath()))
+  const before = snapshotFiles(withPolicy)
+  writeFileSync(join(withPolicy, 'report.txt'), 'Total: 1.00')
+  const files = producedFiles(withPolicy, before)
+  assert.equal(files.length, 1); assert.match(files[0]!, /report\.txt[\s\S]*Total: 1\.00/)
+})
+
+test('probe plugin enforces a candidate deny rule on the real Cordis event pipeline', async () => {
+  const { HeadlessExecutor } = await import('../src/dsh/executors.ts')
+  const probe = await import('../src/dsh/probe.ts')
+  const ws = mkdtempSync(join(tmpdir(), 'h2p3-'))
+  HeadlessExecutor.install(ws, { 'systemprompt.md': 'x', 'plugins/safe.json': JSON.stringify({ description: 'd', rules: [{ on: 'pre', tool: 'bash', match: 'rm ', action: 'deny', message: 'never delete' }] }) })
+  const root = new Context()
+  root.plugin(probe, { treeDir: join(ws, '.harness2') })
+  await tick()
+  const d = await root.waterfall('tools/pre-execute' as any, { name: 'bash', arguments: { command: 'rm junk.txt' } } as any, async () => ({ kind: 'allow' }) as any)
+  assert.deepEqual(d, { kind: 'deny', reason: '[harness2 policy] never delete' })
+})
+
+test('steer message is built even when @deepseek-ai/dsh-llm cannot be resolved', async () => {
+  const { createSteerMessage } = await import('../src/dsh/types.ts')
+  const m = (await createSteerMessage('check it', 'x'.repeat(200))) as any
+  assert.equal(m.role, 'user'); assert.equal(m.content[0].text, 'check it'); assert.ok(m.id); assert.ok(m.source.summary.length <= 120)
+})

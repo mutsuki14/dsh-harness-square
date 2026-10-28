@@ -16,7 +16,7 @@
 import type { Context } from '@deepseek-ai/cordis'
 import Schema from '@deepseek-ai/schemastery'
 import { argsText, ruleMatches, validatePolicyPlugin, type PolicyRule } from '../core/policy.ts'
-import { DEFAULT_SURFACE, frontmatter, pluginNames, skillNames, subagentNames, type HarnessTree, type SurfaceSpec } from '../core/tree.ts'
+import { DEFAULT_SURFACE, frontmatter, pluginNames, scriptPaths, skillNames, subagentNames, type HarnessTree, type SurfaceSpec } from '../core/tree.ts'
 import { body, renderAlwaysOn, renderCatalog } from './render.ts'
 import type { Harness2Service } from './service.ts'
 import {
@@ -73,14 +73,16 @@ export function compilePolicies(tree: HarnessTree, surface: SurfaceSpec = DEFAUL
 }
 
 /** The text of the always-on system-prompt section for a harness. */
-export function sectionText(tree: HarnessTree, svc: Pick<Harness2Service, 'surface'>, skillTool: string): string {
+export function sectionText(tree: HarnessTree, svc: Pick<Harness2Service, 'surface'>, skillTool: string, scriptsRoot?: string): string {
   const always = renderAlwaysOn(tree, svc.surface)
   const catalog = renderCatalog(tree, svc.surface)
   if (!always && !catalog) return ''
+  const scripts = scriptPaths(svc.surface, tree)
   return [
     '# Operating harness',
     always,
     catalog && `## On-demand components\n\nLoad a skill or sub-agent brief with the \`${skillTool}\` tool when its trigger applies; do not load them speculatively.\n\n${catalog}`,
+    scripts.length && scriptsRoot ? `## Helper scripts\n\nHarness script paths above are relative to \`${scriptsRoot}\`; run them from there by absolute path, e.g. \`python3 ${scriptsRoot}/${scripts[0]}\`.` : '',
   ]
     .filter(Boolean)
     .join('\n\n')
@@ -106,7 +108,7 @@ export function apply(ctx: Context, config: Config): void {
     name: 'harness2:active',
     order: config.sectionOrder,
     interpolate: false,
-    text: () => sectionText(tree, svc, config.skillToolName),
+    text: () => sectionText(tree, svc, config.skillToolName, svc.activeHarnessDir(domain())),
   })
 
   // ---- skills / sub-agent briefs -> on-demand tool ---------------------------
@@ -152,12 +154,22 @@ export function apply(ctx: Context, config: Config): void {
     },
   })
 
-  if (!config.enforcePolicies) return
+  if (config.enforcePolicies) installPolicyHooks(ctx, () => policies)
+}
+
+export type { CompiledPolicies }
+
+/**
+ * Compile-once policy enforcement on DSH's tool and turn pipeline. Shared by the live runtime
+ * (policies follow the active harness) and the headless probe plugin (policies of the candidate).
+ */
+export function installPolicyHooks(ctx: Context, current: () => CompiledPolicies): void {
+  const policiesOf = current
 
   // ---- plugins: pre rules -> tools/pre-execute -------------------------------
   onEvent(ctx, 'tools/pre-execute', async (exec: ToolExecution, next: () => Promise<PreToolDecision>): Promise<PreToolDecision> => {
     const hay = argsText(exec.arguments)
-    for (const r of policies.pre) {
+    for (const r of policiesOf().pre) {
       if (!ruleMatches(r, exec.name, hay)) continue
       if (r.action === 'deny') return { kind: 'deny', reason: `[harness2 policy] ${r.message}` }
       if (r.action === 'ask') return { kind: 'ask', reason: `[harness2 policy] ${r.message}` }
@@ -174,7 +186,7 @@ export function apply(ctx: Context, config: Config): void {
       if (downstream.kind !== 'accept' || downstream.value !== undefined) return downstream
       const args = argsText(exec.arguments)
       const resultText = result.content.map(b => (b.type === 'text' ? String((b as { text?: string }).text ?? '') : '')).join('\n')
-      const reminders = policies.post.filter(r => ruleMatches(r, exec.name, r.matchResult ? resultText : args)).map(r => r.message)
+      const reminders = policiesOf().post.filter(r => ruleMatches(r, exec.name, r.matchResult ? resultText : args)).map(r => r.message)
       if (!reminders.length) return downstream
       const base: ContentBlock[] = downstream.content ?? [...result.content]
       const decision: PostToolDecision = { kind: 'accept', content: [...base, { type: 'text', text: `\n[harness2 policy] ${reminders.join(' ')}` }] }
@@ -186,12 +198,12 @@ export function apply(ctx: Context, config: Config): void {
   // ---- plugins: stop rules -> agent/turn-stopping ----------------------------
   const steered = new Map<string, number>()
   onEvent(ctx, 'agent/turn-stopping', async (payload: { agent: AgentLike; turn: number }) => {
-    if (!policies.stop.length || typeof payload.agent?.steer !== 'function') return
+    if (!policiesOf().stop.length || typeof payload.agent?.steer !== 'function') return
     const key = `${payload.agent.id ?? payload.agent.sessionId ?? '?'}#${payload.turn}`
     const used = steered.get(key) ?? 0
-    const budget = Math.max(...policies.stop.map(r => r.maxTimes ?? 1))
+    const budget = Math.max(...policiesOf().stop.map(r => r.maxTimes ?? 1))
     if (used >= budget) return
-    const rules = policies.stop.filter(r => (r.maxTimes ?? 1) > used)
+    const rules = policiesOf().stop.filter(r => (r.maxTimes ?? 1) > used)
     if (!rules.length) return
     const msg = await createSteerMessage(`[harness2 policy] ${rules.map(r => r.message).join(' ')}`, 'harness2 stop check')
     if (msg === undefined) return

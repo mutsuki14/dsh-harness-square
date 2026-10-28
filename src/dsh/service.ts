@@ -160,6 +160,12 @@ export class Harness2Service extends Service {
 
   // ---- active harness ----------------------------------------------------
 
+  /** Directory holding the domain's activated harness files, or undefined while the default is in effect. */
+  activeHarnessDir(domain = this.config.defaultDomain): string | undefined {
+    const dir = this.activeDir(domain)
+    return existsSync(join(dir, 'ACTIVE')) ? dir : undefined
+  }
+
   private activeDir(domain: string): string {
     return join(this.root, 'active', domainDir(domain))
   }

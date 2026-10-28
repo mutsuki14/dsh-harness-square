@@ -12,10 +12,11 @@
  */
 
 import { spawn, spawnSync } from 'node:child_process'
-import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
-import { join } from 'node:path'
+import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
+import { extname, join, relative, sep } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { addUsage, costOf, ZERO_USAGE, type Executor, type Price, type Rollout, type TaskSpec, type TokenUsage } from '../core/spec.ts'
-import { DEFAULT_SURFACE, writeTree, type HarnessTree, type SurfaceSpec } from '../core/tree.ts'
+import { DEFAULT_SURFACE, pluginNames, writeTree, type HarnessTree, type SurfaceSpec } from '../core/tree.ts'
 import { streamText } from './improver.ts'
 import { renderHarnessPrompt } from './render.ts'
 import type { AgentLike, LlmService, WorkflowEngine } from './types.ts'
@@ -201,6 +202,53 @@ export interface HeadlessExecutorOptions {
   price?: Price
 }
 
+/** The probe plugin module next to this file (`.js` when built, `.ts` under tests). */
+export function probeModulePath(): string {
+  const self = fileURLToPath(import.meta.url)
+  return join(self, '..', `probe${extname(self)}`)
+}
+
+/** Paths an install or seed places in a probe workspace; excluded from produced-file collection. */
+const INSTALLED = ['.git', '.harness2', '.agents', 'AGENTS.md', '.harness2-probe.patch.yml']
+
+/** Relative path -> mtime for every file under `dir`, skipping installed paths. */
+export function snapshotFiles(dir: string): Map<string, number> {
+  const out = new Map<string, number>()
+  const walk = (d: string): void => {
+    for (const name of readdirSync(d)) {
+      const abs = join(d, name)
+      const rel = relative(dir, abs).split(sep).join('/')
+      if (INSTALLED.some(p => rel === p || rel.startsWith(`${p}/`)) || name === 'node_modules' || name === '__pycache__') continue
+      const st = statSync(abs)
+      if (st.isDirectory()) walk(abs)
+      else if (st.isFile()) out.set(rel, st.mtimeMs)
+    }
+  }
+  walk(dir)
+  return out
+}
+
+/**
+ * Files the agent created or changed since `before`, rendered for the deliverable.
+ * Text files only, at most `maxFiles` files and `maxChars` per file.
+ */
+export function producedFiles(dir: string, before: Map<string, number>, maxFiles = 8, maxChars = 12_000): string[] {
+  const after = snapshotFiles(dir)
+  const changed = [...after.entries()].filter(([rel, m]) => before.get(rel) !== m).map(([rel]) => rel).sort()
+  const out: string[] = []
+  for (const rel of changed.slice(0, maxFiles)) {
+    const buf = readFileSync(join(dir, rel))
+    if (buf.includes(0)) {
+      out.push(`<file path="${rel}">(binary, ${buf.length} bytes)</file>`)
+      continue
+    }
+    const text = buf.toString('utf8')
+    out.push(`<file path="${rel}">\n${text.length > maxChars ? `${text.slice(0, maxChars)}\n…[truncated]` : text}\n</file>`)
+  }
+  if (changed.length > maxFiles) out.push(`(+${changed.length - maxFiles} more changed files not shown)`)
+  return out
+}
+
 export interface HeadlessEvent {
   type: string
   [k: string]: unknown
@@ -312,6 +360,18 @@ export class HeadlessExecutor implements Executor {
     HeadlessExecutor.isolate(workspace)
     writeTree(surface, harness, join(workspace, '.harness2'))
     writeFileSync(join(workspace, 'AGENTS.md'), `${renderHarnessPrompt(harness, surface, { inlineSkills: false })}\n`, 'utf8')
+    if (pluginNames(surface, harness).length) {
+      // Enforce the candidate's loop policies inside the probe process, exactly as the live runtime would.
+      const patch = [
+        '- insert:',
+        '    - id: harness2-probe',
+        `      name: ${JSON.stringify(probeModulePath())}`,
+        '      config:',
+        `        treeDir: ${JSON.stringify(join(workspace, '.harness2'))}`,
+        '',
+      ].join('\n')
+      writeFileSync(join(workspace, '.harness2-probe.patch.yml'), patch, 'utf8')
+    }
     for (const [rel, text] of Object.entries(harness)) {
       const m = new RegExp(`^${surface.skillDir}/([^/]+)/(.+)$`).exec(rel)
       if (!m) continue
@@ -334,7 +394,9 @@ export class HeadlessExecutor implements Executor {
     const [cmd, ...pre] = (this.opts.command ?? 'dsh').split(/\s+/).filter(Boolean)
     // dsh 0.2.1-rc.4 headless has no --permission-mode flag; its bundle patch reads
     // DSH_PERMISSION_MODE for the sandbox policy instead, which newer releases also honour.
-    const args = [...pre, '--profile', 'headless', '--json', '-']
+    const probePatch = join(ws, '.harness2-probe.patch.yml')
+    const args = [...pre, '--profile', 'headless', ...(existsSync(probePatch) ? ['--patch', probePatch] : []), '--json', '-']
+    const before = snapshotFiles(ws)
     const lines: string[] = []
     let stderr = ''
     const code = await new Promise<number | string>(resolve => {
@@ -372,6 +434,7 @@ export class HeadlessExecutor implements Executor {
       const p = join(ws, rel)
       if (existsSync(p)) files.push(`<file path="${rel}">\n${readFileSync(p, 'utf8')}\n</file>`)
     }
+    for (const f of producedFiles(ws, before)) if (!files.some(x => x.startsWith(f.slice(0, f.indexOf('>') + 1)))) files.push(f)
     const deliverable = [folded.final, ...files].filter(s => s.trim()).join('\n\n')
     if (this.opts.keep === false) rmSync(ws, { recursive: true, force: true })
     const res: ExecResult = {
@@ -388,6 +451,11 @@ export class HeadlessExecutor implements Executor {
       if (cost !== undefined) res.costUsd = cost
     }
     if (code !== 0) res.error = `dsh exited ${code}: ${folded.error ?? stderr.trim().slice(-600)}`
+    else if (existsSync(probePatch) && /harness2-probe[\s\S]{0,200}(?:did not activate|failed to import)|did not activate[\s\S]{0,400}harness2-probe/.test(stderr)) {
+      // The run happened, but without the candidate's loop policies: it does not measure this harness.
+      res.ok = false
+      res.error = `harness2-probe did not activate, so candidate policies were not enforced: ${stderr.trim().slice(-400)}`
+    }
     return res
   }
 }

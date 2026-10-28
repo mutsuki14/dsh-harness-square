@@ -8,6 +8,7 @@
  */
 
 import type { Context } from '@deepseek-ai/cordis'
+import { randomUUID } from 'node:crypto'
 
 /** `@deepseek-ai/dsh-llm` ContentBlock subset. */
 export type TextBlock = { type: 'text'; text: string }
@@ -168,13 +169,22 @@ export async function createSteerMessage(text: string, summary: string): Promise
       createUserMessage?: (input: unknown) => unknown
       boundContextSummary?: (s: string) => string
     }
-    if (!mod.createUserMessage) return undefined
-    const bounded = mod.boundContextSummary ? mod.boundContextSummary(summary) : summary.slice(0, 120)
-    return mod.createUserMessage({
-      content: [{ type: 'text', text }],
-      source: { kind: 'harness2-policy', form: 'notice', summary: bounded },
-    })
+    if (mod.createUserMessage) {
+      const bounded = mod.boundContextSummary ? mod.boundContextSummary(summary) : summary.slice(0, 120)
+      return mod.createUserMessage({
+        content: [{ type: 'text', text }],
+        source: { kind: 'harness2-policy', form: 'notice', summary: bounded },
+      })
+    }
   } catch {
-    return undefined
+    /* not resolvable from this plugin's location (e.g. a --patch probe): build the same shape below */
   }
+  // Same shape createUserMessage produces: stable id, user role, frozen content and source.
+  const bounded = summary.length <= 120 ? summary : `${summary.slice(0, 119)}…`
+  return Object.freeze({
+    id: randomUUID(),
+    role: 'user',
+    content: Object.freeze([Object.freeze({ type: 'text', text })]),
+    source: Object.freeze({ kind: 'harness2-policy', form: 'notice', summary: bounded }),
+  })
 }
