@@ -114,3 +114,13 @@ test('autotrigger lines never name a specific skill-loading tool', async () => {
   assert.match(t['tool_guidance.md'] ?? '', /Use skill `ledger-total` when: total a ledger/)
   assert.ok(!/harness2_skill/.test(t['tool_guidance.md'] ?? ''))
 })
+
+test('frontmatter is canonicalised to YAML-safe quoted values (dsh rejects plain scalars with ": ")', async () => {
+  const { canonicalFrontmatter, frontmatter } = await import('../src/core/tree.ts')
+  const bad = '---\nname: payout-answer\ndescription: Use when the task states a required "Total: <value>" first line.\n---\nbody\n'
+  const good = canonicalFrontmatter(bad)
+  assert.equal(good, '---\nname: "payout-answer"\ndescription: "Use when the task states a required \\"Total: <value>\\" first line."\n---\nbody\n')
+  assert.deepEqual(frontmatter(good), frontmatter(bad))
+  assert.equal(canonicalFrontmatter(good), good, 'idempotent')
+  assert.equal(canonicalFrontmatter('no frontmatter'), 'no frontmatter')
+})

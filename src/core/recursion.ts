@@ -14,7 +14,7 @@ import { Ledger } from './ledger.ts'
 import { applyEdits, parseEdits } from './protocol.ts'
 import * as P from './prompts.ts'
 import { addUsage, ZERO_USAGE, type Executor, type Improver, type ProgressSink, type Rollout, type TaskSpec, type TokenUsage, type WorkPrompts } from './spec.ts'
-import { autotrigger, diversity, isUnchanged, scriptPaths, validate, type HarnessTree, type SurfaceSpec } from './tree.ts'
+import { autotrigger, canonicalizeFrontmatter, diversity, isUnchanged, scriptPaths, validate, type HarnessTree, type SurfaceSpec } from './tree.ts'
 
 export const STAGE_ATTEMPTS = 2
 
@@ -123,6 +123,7 @@ export async function mapLimit<T, R>(items: readonly T[], width: number, fn: (it
 }
 
 function acceptTree(ctx: RecursionContext, next: HarnessTree, fallback: HarnessTree, label: string): { kept: boolean; error: string } {
+  canonicalizeFrontmatter(ctx.surface, next)
   const triggered = autotrigger(ctx.surface, next)
   if (triggered.length) ctx.onProgress?.({ type: 'log', taskId: ctx.task.id, message: `[${label}] auto-triggered skill(s): ${triggered.join(', ')}` })
   const kept = isUnchanged(fallback, next)

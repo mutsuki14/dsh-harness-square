@@ -138,9 +138,50 @@ export function frontmatter(text: string): Record<string, string> | undefined {
   const out: Record<string, string> = {}
   for (const line of m[1].split(/\r?\n/)) {
     const kv = /^([A-Za-z_][\w-]*)\s*:\s*(.*)$/.exec(line)
-    if (kv?.[1]) out[kv[1]] = (kv[2] ?? '').trim().replace(/^["']|["']$/g, '')
+    if (!kv?.[1]) continue
+    const raw = (kv[2] ?? '').trim()
+    let value = raw
+    if (raw.startsWith('"') && raw.endsWith('"') && raw.length >= 2) {
+      try {
+        value = JSON.parse(raw) as string
+      } catch {
+        value = raw.slice(1, -1)
+      }
+    } else if (raw.startsWith("'") && raw.endsWith("'") && raw.length >= 2) {
+      value = raw.slice(1, -1).replace(/''/g, "'")
+    }
+    out[kv[1]] = value
   }
   return out
+}
+
+/**
+ * Rewrite a component's frontmatter so every value is a double-quoted (JSON) string. A plain YAML
+ * scalar containing ": " or starting with a YAML indicator is invalid, and dsh's YAML loader then
+ * silently ignores the whole skill. JSON strings are always valid YAML. Returns the text unchanged
+ * when there is no frontmatter.
+ */
+export function canonicalFrontmatter(text: string): string {
+  const m = /^(\s*)---\r?\n([\s\S]*?)\r?\n---(\r?\n|$)/.exec(text)
+  if (!m) return text
+  const fm = frontmatter(text) ?? {}
+  const lines = Object.entries(fm).map(([k, v]) => `${k}: ${JSON.stringify(v)}`)
+  return `${m[1]}---\n${lines.join('\n')}\n---\n${text.slice(m[0].length)}`
+}
+
+/** Canonicalise the frontmatter of every skill and sub-agent file in place; returns the paths changed. */
+export function canonicalizeFrontmatter(surface: SurfaceSpec, tree: HarnessTree): string[] {
+  const changed: string[] = []
+  const re = rx(surface)
+  for (const rel of Object.keys(tree)) {
+    if (!re.skill.test(rel) && !re.subagent.test(rel)) continue
+    const next = canonicalFrontmatter(tree[rel] ?? '')
+    if (next !== tree[rel]) {
+      tree[rel] = next
+      changed.push(rel)
+    }
+  }
+  return changed
 }
 
 /** Read every file on the editable surface below `dir`. Off-surface paths go to `rejected`. */

@@ -20,7 +20,7 @@ import { ExperienceLibrary, domainDir } from '../core/library.ts'
 import { Harness2, type TaskResult } from '../core/pipeline.ts'
 import type { Mode } from '../core/recursion.ts'
 import { normalizePrice, type Executor, type Improver, type Price, type ProgressEvent, type TaskSpec, type WorkPrompts } from '../core/spec.ts'
-import { DEFAULT_SURFACE, readTree, surfaceWith, validate, writeTree, type HarnessTree, type SurfaceSpec } from '../core/tree.ts'
+import { canonicalizeFrontmatter, DEFAULT_SURFACE, readTree, surfaceWith, validate, writeTree, type HarnessTree, type SurfaceSpec } from '../core/tree.ts'
 import { DEFAULT_BASE_TREE, DEFAULT_WORK } from './defaults.ts'
 import { LlmExecutor, WorkflowExecutor, HeadlessExecutor } from './executors.ts'
 import { LlmImprover } from './improver.ts'
@@ -181,7 +181,9 @@ export class Harness2Service extends Service {
   }
 
   /** Validate and activate a harness for a domain; live agents pick it up on their next step. */
-  activate(domain: string, tree: HarnessTree, source = 'manual'): void {
+  activate(domain: string, input: HarnessTree, source = 'manual'): void {
+    const tree = { ...input }
+    canonicalizeFrontmatter(this.surface, tree)
     validate(this.surface, tree, { allowSubagents: this.config.allowSubagents })
     const dir = this.activeDir(domain)
     writeTree(this.surface, tree, dir)

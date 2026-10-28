@@ -16,7 +16,7 @@ import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statS
 import { extname, join, relative, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { addUsage, costOf, ZERO_USAGE, type Executor, type Price, type Rollout, type TaskSpec, type TokenUsage } from '../core/spec.ts'
-import { DEFAULT_SURFACE, pluginNames, writeTree, type HarnessTree, type SurfaceSpec } from '../core/tree.ts'
+import { canonicalFrontmatter, DEFAULT_SURFACE, pluginNames, writeTree, type HarnessTree, type SurfaceSpec } from '../core/tree.ts'
 import { streamText } from './improver.ts'
 import { renderHarnessPrompt } from './render.ts'
 import type { AgentLike, LlmService, WorkflowEngine } from './types.ts'
@@ -418,7 +418,7 @@ export class HeadlessExecutor implements Executor {
       if (!m) continue
       const dest = join(workspace, '.agents', 'skills', m[1] as string, m[2] as string)
       mkdirSync(join(dest, '..'), { recursive: true })
-      writeFileSync(dest, text, 'utf8')
+      writeFileSync(dest, m[2] === 'SKILL.md' ? canonicalFrontmatter(text) : text, 'utf8')
     }
   }
 
