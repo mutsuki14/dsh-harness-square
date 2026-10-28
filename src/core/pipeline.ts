@@ -26,6 +26,8 @@ export interface Harness2Options {
   work: WorkPrompts
   /** Starting harness when the domain library is empty. */
   baseTree: HarnessTree
+  /** How `startedFrom` names `baseTree` (default `base`). */
+  baseLabel?: string
   k?: number
   mode?: Mode
   surface?: SurfaceSpec
@@ -88,7 +90,7 @@ export class Harness2 {
       const latest = this.library.latest(domain)
       if (latest && Object.keys(latest.tree).length) return { tree: latest.tree, from: `library:${latest.taskSlug}` }
     }
-    return { tree: { ...this.opts.baseTree }, from: 'base' }
+    return { tree: { ...this.opts.baseTree }, from: this.opts.baseLabel ?? 'base' }
   }
 
   private persist(dir: string | undefined, name: string, data: unknown): void {

@@ -84,7 +84,7 @@ export class LlmExecutor implements Executor {
       if (this.opts.maxTokens !== undefined) args.maxTokens = this.opts.maxTokens
       if (signal) args.signal = signal
       const r = await streamText(this.llm, args)
-      return toollessRollout(r.text, `[SYSTEM] harness rendered (${system.length} chars)\n[USER] ${task.prompt.slice(0, 500)}\n[ASSISTANT]\n${r.text}`, Date.now() - started, { inputTokens: r.inputTokens, outputTokens: r.outputTokens }, this.opts.price)
+      return toollessRollout(r.text, `[SYSTEM] harness rendered (${system.length} chars)\n[USER] ${task.prompt.slice(0, 500)}\n[ASSISTANT]\n${r.text}`, Date.now() - started, { inputTokens: r.inputTokens, outputTokens: r.outputTokens, cacheReadTokens: r.cacheReadTokens }, this.opts.price)
     } catch (e) {
       return { ok: false, delivered: false, deliverable: '', trajectory: '', error: (e as Error).message, wallMs: Date.now() - started }
     }
@@ -359,7 +359,8 @@ export class HeadlessExecutor implements Executor {
   static install(workspace: string, harness: HarnessTree, surface: SurfaceSpec = DEFAULT_SURFACE): void {
     HeadlessExecutor.isolate(workspace)
     writeTree(surface, harness, join(workspace, '.harness2'))
-    writeFileSync(join(workspace, 'AGENTS.md'), `${renderHarnessPrompt(harness, surface, { inlineSkills: false })}\n`, 'utf8')
+    // Policies enforced in-loop by the probe plugin are not also described in prose: the live runtime does not describe them either.
+    writeFileSync(join(workspace, 'AGENTS.md'), `${renderHarnessPrompt(harness, surface, { inlineSkills: false, policiesAsProse: pluginNames(surface, harness).length === 0 })}\n`, 'utf8')
     if (pluginNames(surface, harness).length) {
       // Enforce the candidate's loop policies inside the probe process, exactly as the live runtime would.
       const patch = [

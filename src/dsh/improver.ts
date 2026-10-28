@@ -41,10 +41,11 @@ async function backoff(attempt: number, signal?: AbortSignal): Promise<void> {
 }
 
 /** Stream one completion through `ctx.llm` and return its text. */
-export async function streamText(llm: LlmService, opts: { provider: string; model: string; system?: string; prompt: string; temperature?: number; maxTokens?: number; signal?: AbortSignal }): Promise<{ text: string; inputTokens: number; outputTokens: number }> {
+export async function streamText(llm: LlmService, opts: { provider: string; model: string; system?: string; prompt: string; temperature?: number; maxTokens?: number; signal?: AbortSignal }): Promise<{ text: string; inputTokens: number; outputTokens: number; cacheReadTokens: number }> {
   let text = ''
   let inputTokens = 0
   let outputTokens = 0
+  let cacheReadTokens = 0
   const req: Parameters<LlmService['stream']>[0] = {
     provider: opts.provider,
     model: opts.model,
@@ -59,13 +60,14 @@ export async function streamText(llm: LlmService, opts: { provider: string; mode
     else if (chunk.type === 'usage') {
       inputTokens = chunk.usage.inputTokens
       outputTokens = chunk.usage.outputTokens
+      cacheReadTokens = chunk.usage.cacheReadTokens ?? 0
     } else if (chunk.type === 'finish') {
       if (chunk.reason.kind === 'error' || chunk.reason.kind === 'aborted') {
         throw new ImproverError(`model call ${chunk.reason.kind}: ${chunk.reason.failure?.message ?? 'unknown failure'}`)
       }
     }
   }
-  return { text, inputTokens, outputTokens }
+  return { text, inputTokens, outputTokens, cacheReadTokens }
 }
 
 export class LlmImprover implements Improver {
@@ -90,7 +92,7 @@ export class LlmImprover implements Improver {
         const r = await streamText(this.llm, args)
         if (!r.text.trim()) throw new ImproverError('empty reply')
         this.opts.audit?.({ label: req.label, mission: req.mission, text: r.text })
-        const reply: ImproverReply = { text: r.text, inputTokens: r.inputTokens, outputTokens: r.outputTokens }
+        const reply: ImproverReply = { text: r.text, inputTokens: r.inputTokens, outputTokens: r.outputTokens, cacheReadTokens: r.cacheReadTokens }
         const cost = costOf(r, this.opts.price)
         if (cost !== undefined) reply.costUsd = cost
         return reply
@@ -117,7 +119,7 @@ export interface DeepSeekApiOptions {
 }
 
 /** Minimal chat-completions client for the DeepSeek API (OpenAI-compatible). */
-export async function deepseekChat(opts: DeepSeekApiOptions, system: string, prompt: string, signal?: AbortSignal): Promise<{ text: string; inputTokens: number; outputTokens: number }> {
+export async function deepseekChat(opts: DeepSeekApiOptions, system: string, prompt: string, signal?: AbortSignal): Promise<{ text: string; inputTokens: number; outputTokens: number; cacheReadTokens: number }> {
   const base = (opts.baseUrl ?? 'https://api.deepseek.com').replace(/\/+$/, '')
   const ctl = new AbortController()
   const timer = setTimeout(() => ctl.abort(new Error('timeout')), opts.timeoutMs ?? 600_000)
@@ -141,11 +143,13 @@ export async function deepseekChat(opts: DeepSeekApiOptions, system: string, pro
       signal: ctl.signal,
     })
     if (!res.ok) throw new ImproverError(`DeepSeek API ${res.status}: ${(await res.text()).slice(0, 400)}`)
-    const json = (await res.json()) as { choices?: { message?: { content?: string } }[]; usage?: { prompt_tokens?: number; completion_tokens?: number } }
+    const json = (await res.json()) as { choices?: { message?: { content?: string } }[]; usage?: { prompt_tokens?: number; completion_tokens?: number; prompt_cache_hit_tokens?: number; prompt_cache_miss_tokens?: number } }
     return {
       text: json.choices?.[0]?.message?.content ?? '',
-      inputTokens: json.usage?.prompt_tokens ?? 0,
+      // prompt_tokens = cache hits + misses; report misses as input and hits as cache reads (dsh convention).
+      inputTokens: json.usage?.prompt_cache_miss_tokens ?? Math.max(0, (json.usage?.prompt_tokens ?? 0) - (json.usage?.prompt_cache_hit_tokens ?? 0)),
       outputTokens: json.usage?.completion_tokens ?? 0,
+      cacheReadTokens: json.usage?.prompt_cache_hit_tokens ?? 0,
     }
   } finally {
     clearTimeout(timer)

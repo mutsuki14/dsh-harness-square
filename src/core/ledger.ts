@@ -23,6 +23,7 @@ export interface LedgerEntry {
   attempts: number
   inputTokens: number
   outputTokens: number
+  cacheReadTokens: number
   /** False when the executor/improver could not report usage for this entry. */
   usageKnown: boolean
 }
@@ -40,11 +41,11 @@ export class Ledger {
   }
 
   rollout(label: string, usd = 0, usage?: TokenUsage): void {
-    this.entries.push({ kind: 'rollout', label, usd, attempts: 1, inputTokens: usage?.inputTokens ?? 0, outputTokens: usage?.outputTokens ?? 0, usageKnown: !!usage })
+    this.entries.push({ kind: 'rollout', label, usd, attempts: 1, inputTokens: usage?.inputTokens ?? 0, outputTokens: usage?.outputTokens ?? 0, cacheReadTokens: usage?.cacheReadTokens ?? 0, usageKnown: !!usage })
   }
 
   session(label: string, usd = 0, attempts = 1, usage?: TokenUsage): void {
-    this.entries.push({ kind: 'session', label, usd, attempts, inputTokens: usage?.inputTokens ?? 0, outputTokens: usage?.outputTokens ?? 0, usageKnown: !!usage })
+    this.entries.push({ kind: 'session', label, usd, attempts, inputTokens: usage?.inputTokens ?? 0, outputTokens: usage?.outputTokens ?? 0, cacheReadTokens: usage?.cacheReadTokens ?? 0, usageKnown: !!usage })
   }
 
   /** Summed tokens over entries that reported usage. */

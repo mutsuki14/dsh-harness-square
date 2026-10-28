@@ -21,7 +21,7 @@ export type StreamChunk =
   | { type: 'reasoning-delta'; index: number; text: string }
   | { type: 'tool-call-delta'; index: number; id: string; name?: string; argumentsDelta: string }
   | { type: 'block-end'; index: number; block: ContentBlock }
-  | { type: 'usage'; usage: { inputTokens: number; outputTokens: number; totalTokens?: number } }
+  | { type: 'usage'; usage: { inputTokens: number; outputTokens: number; totalTokens?: number; cacheReadTokens?: number } }
   | { type: 'finish'; reason: { kind: 'stop' | 'tool-calls' | 'max-tokens' | 'aborted' | 'error'; failure?: { message?: string } & Record<string, unknown> } }
 
 /** `@deepseek-ai/dsh-llm` GenerateOptions subset (one-shot caller form). */

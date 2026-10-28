@@ -117,7 +117,7 @@ export function apply(ctx: Context, config: Config): void {
         const report = [
           `Harness2 ${r.mode} k=${r.k} on domain \`${domain}\`: adopted \`${r.selection.chosenLabel || '(none)'}\`${r.selection.fellBack ? ' (selector fallback)' : ''}.`,
           r.selection.why && `Why: ${r.selection.why}`,
-          `Budget: R=${r.modeResult.ledger.R} rollouts, P=${r.modeResult.ledger.P} improver stages; tokens in/out ${r.usage.inputTokens}/${r.usage.outputTokens}${svc.config.improverPrice || svc.config.solverPrice ? `, ~$${r.usd.toFixed(4)}` : ''}${r.usageUnknown.length ? ` (usage not observable for: ${r.usageUnknown.join(', ')})` : ''}.`,
+          `Budget: R=${r.modeResult.ledger.R} rollouts, P=${r.modeResult.ledger.P} improver stages; tokens in/cached/out ${r.usage.inputTokens}/${r.usage.cacheReadTokens ?? 0}/${r.usage.outputTokens}${svc.config.improverPrice || svc.config.solverPrice ? `, ~$${r.usd.toFixed(4)}` : ''}${r.usageUnknown.length ? ` (usage not observable for: ${r.usageUnknown.join(', ')})` : ''}.`,
           `Stages fell back: ${r.modeResult.stages.filter(s => s.fellBack).map(s => s.label).join(', ') || 'none'}; kept base: ${r.modeResult.stages.filter(s => s.keptBase).map(s => s.label).join(', ') || 'none'}.`,
           r.selection.experience ? `Lesson recorded -- cue: ${r.selection.experience.cue}\nlesson: ${r.selection.experience.lesson}` : 'No transferable lesson was supported by the evidence (NO_ENTRY).',
           `Active harness for \`${domain}\`: ${inventory(svc.surface, svc.activeHarness(domain))}`,

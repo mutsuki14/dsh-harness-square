@@ -51,36 +51,46 @@ export function checkWorkPrompts(wp: WorkPrompts): WorkPrompts {
   return wp
 }
 
-/** Token usage of one model call or rollout. */
+/**
+ * Token usage of one model call or rollout. Follows dsh's convention: `inputTokens` are UNCACHED
+ * prompt tokens; prompt tokens served from the provider's cache are counted in `cacheReadTokens`.
+ */
 export interface TokenUsage {
   inputTokens: number
   outputTokens: number
+  cacheReadTokens?: number
 }
 
-/** USD per million tokens. */
+/** USD per million tokens. `cacheRead` defaults to `input` (an upper bound) when not given. */
 export interface Price {
   input: number
   output: number
+  cacheRead?: number
 }
 
-export const ZERO_USAGE: Readonly<TokenUsage> = Object.freeze({ inputTokens: 0, outputTokens: 0 })
+export const ZERO_USAGE: Readonly<TokenUsage> = Object.freeze({ inputTokens: 0, outputTokens: 0, cacheReadTokens: 0 })
 
 export function addUsage(a: TokenUsage, b?: Partial<TokenUsage>): TokenUsage {
-  return { inputTokens: a.inputTokens + (b?.inputTokens ?? 0), outputTokens: a.outputTokens + (b?.outputTokens ?? 0) }
+  return {
+    inputTokens: a.inputTokens + (b?.inputTokens ?? 0),
+    outputTokens: a.outputTokens + (b?.outputTokens ?? 0),
+    cacheReadTokens: (a.cacheReadTokens ?? 0) + (b?.cacheReadTokens ?? 0),
+  }
 }
 
 /** A usable price, or undefined for absent/partial/invalid input (config may supply `{}`). */
 export function normalizePrice(p: unknown): Price | undefined {
   if (!p || typeof p !== 'object') return undefined
-  const { input, output } = p as Partial<Price>
-  return typeof input === 'number' && typeof output === 'number' && input >= 0 && output >= 0 ? { input, output } : undefined
+  const { input, output, cacheRead } = p as Partial<Price>
+  if (!(typeof input === 'number' && typeof output === 'number' && input >= 0 && output >= 0)) return undefined
+  return typeof cacheRead === 'number' && cacheRead >= 0 ? { input, output, cacheRead } : { input, output }
 }
 
 /** Cost of a usage sample, or undefined when no price is configured. */
 export function costOf(u: Partial<TokenUsage> | undefined, price: Price | undefined): number | undefined {
   const p = normalizePrice(price)
   if (!p || !u) return undefined
-  return ((u.inputTokens ?? 0) * p.input + (u.outputTokens ?? 0) * p.output) / 1e6
+  return ((u.inputTokens ?? 0) * p.input + (u.cacheReadTokens ?? 0) * (p.cacheRead ?? p.input) + (u.outputTokens ?? 0) * p.output) / 1e6
 }
 
 /** One task the agent must perform. */
@@ -141,6 +151,7 @@ export interface ImproverReply {
   costUsd?: number
   inputTokens?: number
   outputTokens?: number
+  cacheReadTokens?: number
 }
 
 /** The model channel used for propose / compose / select / reflect. */

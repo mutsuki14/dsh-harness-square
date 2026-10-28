@@ -67,11 +67,11 @@ export function renderPoliciesAsProse(tree: HarnessTree, surface: SurfaceSpec = 
  * Render the full harness as one system prompt (for one-shot / subprocess executors).
  * Skills are inlined because the executor cannot offer the on-demand tool; the prompt says so.
  */
-export function renderHarnessPrompt(tree: HarnessTree, surface: SurfaceSpec = DEFAULT_SURFACE, opts: { inlineSkills?: boolean } = {}): string {
+export function renderHarnessPrompt(tree: HarnessTree, surface: SurfaceSpec = DEFAULT_SURFACE, opts: { inlineSkills?: boolean; policiesAsProse?: boolean } = {}): string {
   const parts: string[] = []
   const always = renderAlwaysOn(tree, surface)
   if (always) parts.push(always)
-  const policies = renderPoliciesAsProse(tree, surface)
+  const policies = opts.policiesAsProse === false ? '' : renderPoliciesAsProse(tree, surface)
   if (policies) parts.push(`## Loop policies\n\n${policies}`)
   const skills = skillNames(surface, tree)
   if (skills.length && opts.inlineSkills !== false) {

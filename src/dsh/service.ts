@@ -96,8 +96,8 @@ export const Config: Schema<Config> = Schema.object({
   warmStart: Schema.boolean().default(true),
   allowSubagents: Schema.boolean().default(true),
   defaultDomain: Schema.string().default('general'),
-  improverPrice: Schema.object({ input: Schema.number().min(0), output: Schema.number().min(0) }).description('USD per 1M tokens for the improver model.'),
-  solverPrice: Schema.object({ input: Schema.number().min(0), output: Schema.number().min(0) }).description('USD per 1M tokens for the solver model.'),
+  improverPrice: Schema.object({ input: Schema.number().min(0), output: Schema.number().min(0), cacheRead: Schema.number().min(0) }).description('USD per 1M tokens for the improver model.'),
+  solverPrice: Schema.object({ input: Schema.number().min(0), output: Schema.number().min(0), cacheRead: Schema.number().min(0) }).description('USD per 1M tokens for the solver model.'),
 }) as Schema<Config>
 
 export interface ImproveRequest {
@@ -262,6 +262,7 @@ export class Harness2Service extends Service {
         improver: this.resolveImprover(req),
         work: req.work ?? DEFAULT_WORK,
         baseTree: this.activeHarness(req.task.domain),
+        baseLabel: `active:${this.activeSource(req.task.domain)}`,
         k,
         mode: req.mode ?? this.config.mode,
         surface: this.surface,

@@ -82,13 +82,15 @@ test('ledger and task result account tokens; cost only when priced', async () =>
   const { costOf } = await import('../src/core/spec.ts')
   assert.equal(costOf({ inputTokens: 1_000_000, outputTokens: 500_000 }, { input: 0.2, output: 0.8 }), 0.6)
   assert.equal(costOf({ inputTokens: 10, outputTokens: 10 }, undefined), undefined)
+  assert.equal(costOf({ inputTokens: 1e6, cacheReadTokens: 1e6, outputTokens: 0 }, { input: 1, output: 2, cacheRead: 0.1 }), 1.1)
+  assert.equal(costOf({ inputTokens: 0, cacheReadTokens: 1e6, outputTokens: 0 }, { input: 1, output: 2 }), 1, 'cache reads default to the input price')
   const imp = new DemoImprover()
   const metered = { name: 'm', call: async (req: any) => ({ ...(await imp.call(req)), inputTokens: 100, outputTokens: 10 }) }
   const exec = new DemoExecutor()
   const metExec = { name: 'me', execute: async (t: any, h: any) => ({ ...(await exec.execute(t, h)), usage: { inputTokens: 50, outputTokens: 5 } }) }
   const r = await new Harness2({ executor: metExec, improver: metered, work: { work: 'reconcile signed ledgers' }, baseTree: DEMO_BASE, k: 1 }).runTask(DEMO_TASKS[0]!)
   // 4 rollouts x (50,5) + 3 stages x (100,10) + selection(trivial, 0) + reflection (100,10)
-  assert.deepEqual(r.usage, { inputTokens: 4 * 50 + 3 * 100 + 100, outputTokens: 4 * 5 + 3 * 10 + 10 })
+  assert.deepEqual(r.usage, { inputTokens: 4 * 50 + 3 * 100 + 100, outputTokens: 4 * 5 + 3 * 10 + 10, cacheReadTokens: 0 })
   assert.deepEqual(r.usageUnknown, [])
 })
 

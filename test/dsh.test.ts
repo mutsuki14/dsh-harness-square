@@ -58,8 +58,8 @@ test('toolless executors never count unexecuted tool-call markup as delivered', 
 })
 
 test('headless step usage is summed, and dropped when any step lacked it', () => {
-  const ok = foldHeadlessEvents(['{"type":"status","phase":"step_end","usage":{"inputTokens":10,"outputTokens":2}}', '{"type":"status","phase":"step_end","usage":{"inputTokens":5,"outputTokens":1}}'])
-  assert.deepEqual(ok.usage, { inputTokens: 15, outputTokens: 3 })
+  const ok = foldHeadlessEvents(['{"type":"status","phase":"step_end","usage":{"inputTokens":10,"outputTokens":2,"cacheReadTokens":100}}', '{"type":"status","phase":"step_end","usage":{"inputTokens":5,"outputTokens":1}}'])
+  assert.deepEqual(ok.usage, { inputTokens: 15, outputTokens: 3, cacheReadTokens: 100 })
   const partial = foldHeadlessEvents(['{"type":"status","phase":"step_end","usage":{"inputTokens":10,"outputTokens":2}}', '{"type":"status","phase":"step_end"}'])
   assert.equal(partial.usage, undefined)
 })
@@ -109,6 +109,8 @@ test('headless install writes a probe patch only for harnesses with plugins; pro
   const patch = readFileSync(join(withPolicy, '.harness2-probe.patch.yml'), 'utf8')
   assert.ok(patch.includes(probeModulePath()) && patch.includes(join(withPolicy, '.harness2')))
   assert.ok(existsSync(probeModulePath()))
+  assert.ok(!readFileSync(join(withPolicy, 'AGENTS.md'), 'utf8').includes('Loop policies'), 'enforced policies are not duplicated as prose')
+  assert.ok(readFileSync(join(plain, 'AGENTS.md'), 'utf8') !== undefined)
   const before = snapshotFiles(withPolicy)
   writeFileSync(join(withPolicy, 'report.txt'), 'Total: 1.00')
   const files = producedFiles(withPolicy, before)

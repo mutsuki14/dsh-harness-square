@@ -39,9 +39,9 @@ const mode = values.mode as Mode
 /** `--price in,out` (USD per 1M tokens) applies to every model call; omit to report tokens only. */
 const price = (() => {
   if (!values.price) return undefined
-  const [i, o] = values.price.split(',').map(Number)
-  if (!Number.isFinite(i) || !Number.isFinite(o)) throw new Error('--price expects "<input>,<output>" USD per 1M tokens')
-  return { input: i as number, output: o as number }
+  const [i, o, c] = values.price.split(',').map(Number)
+  if (!Number.isFinite(i) || !Number.isFinite(o) || (c !== undefined && !Number.isFinite(c))) throw new Error('--price expects "<input>,<output>[,<cacheRead>]" USD per 1M tokens')
+  return c === undefined ? { input: i as number, output: o as number } : { input: i as number, output: o as number, cacheRead: c }
 })()
 const log = (e: { type: string; label?: string; message?: string }) => console.error(`  ${e.type}${e.label ? ` ${e.label}` : ''}${e.message ? ` ${e.message}` : ''}`)
 
@@ -77,7 +77,7 @@ if (cmd === 'demo') {
             const started = Date.now()
             try {
               const r = await deepseekChat({ apiKey, model: values['solver-model'], ...(baseUrl ? { baseUrl } : {}) }, renderHarnessPrompt(harness), task.prompt + Object.entries(task.sources ?? {}).map(([n, b]) => `\n<source name="${n}">\n${b}\n</source>`).join(''))
-              return toollessRollout(r.text, `[ASSISTANT]\n${r.text}`, Date.now() - started, { inputTokens: r.inputTokens, outputTokens: r.outputTokens }, price)
+              return toollessRollout(r.text, `[ASSISTANT]\n${r.text}`, Date.now() - started, { inputTokens: r.inputTokens, outputTokens: r.outputTokens, cacheReadTokens: r.cacheReadTokens }, price)
             } catch (e) {
               return { ok: false, delivered: false, deliverable: '', trajectory: '', error: (e as Error).message }
             }
@@ -86,7 +86,7 @@ if (cmd === 'demo') {
   const h2 = new Harness2({ executor, improver, work: spec.work ?? DEFAULT_WORK, baseTree: DEFAULT_BASE_TREE, k, mode, runsDir: join(out, 'runs'), libraryDir: join(out, 'library'), onProgress: log })
   for (const r of await h2.runStream(spec.tasks)) {
     const cost = price ? ` usd=${r.usd.toFixed(4)}` : ''
-    console.log(`${r.taskId}: adopted=${r.selection.chosenLabel} library=${r.libraryUpdated} tokens_in=${r.usage.inputTokens} tokens_out=${r.usage.outputTokens}${cost}${r.usageUnknown.length ? ` usage_unknown=${r.usageUnknown.join(',')}` : ''}`)
+    console.log(`${r.taskId}: adopted=${r.selection.chosenLabel} library=${r.libraryUpdated} tokens_in=${r.usage.inputTokens} tokens_cached=${r.usage.cacheReadTokens ?? 0} tokens_out=${r.usage.outputTokens}${cost}${r.usageUnknown.length ? ` usage_unknown=${r.usageUnknown.join(',')}` : ''}`)
   }
 } else {
   console.error(`unknown command ${cmd}`)
