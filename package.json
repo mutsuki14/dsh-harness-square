@@ -67,12 +67,18 @@
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": ">=4.0.5 <5",
-    "@deepseek-ai/schemastery": ">=3.18.5 <4"
+    "@deepseek-ai/schemastery": ">=3.18.5 <4",
+    "@deepseek-ai/dsh-llm": ">=0.2.1-rc.4 <0.3.0"
   },
   "devDependencies": {
     "@deepseek-ai/cordis": "^4.0.5",
     "@deepseek-ai/schemastery": "^3.18.5",
     "@types/node": "^22.19.1",
     "typescript": "^5.9.3"
+  },
+  "peerDependenciesMeta": {
+    "@deepseek-ai/dsh-llm": {
+      "optional": true
+    }
   }
 }

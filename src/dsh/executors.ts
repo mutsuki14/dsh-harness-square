@@ -187,9 +187,10 @@ export interface HeadlessEvent {
 }
 
 /** Convert `dsh headless --json` events into a trajectory and final text. */
-export function foldHeadlessEvents(lines: string[]): { trajectory: string; final: string; sessionId?: string } {
+export function foldHeadlessEvents(lines: string[]): { trajectory: string; final: string; sessionId?: string; error?: string } {
   const out: string[] = []
   let final = ''
+  let error: string | undefined
   let sessionId: string | undefined
   for (const line of lines) {
     let ev: HeadlessEvent
@@ -214,12 +215,17 @@ export function foldHeadlessEvents(lines: string[]): { trajectory: string; final
       case 'final':
         final = String(ev['text'] ?? '')
         break
+      case 'error':
+        error = String(ev['message'] ?? 'unknown error')
+        out.push(`[ERROR] ${error}`)
+        break
       default:
         break
     }
   }
-  const r: { trajectory: string; final: string; sessionId?: string } = { trajectory: out.join('\n'), final }
+  const r: { trajectory: string; final: string; sessionId?: string; error?: string } = { trajectory: out.join('\n'), final }
   if (sessionId) r.sessionId = sessionId
+  if (error) r.error = error
   return r
 }
 
@@ -260,11 +266,13 @@ export class HeadlessExecutor implements Executor {
     }
     HeadlessExecutor.install(ws, harness, this.opts.surface ?? DEFAULT_SURFACE)
     const [cmd, ...pre] = (this.opts.command ?? 'dsh').split(/\s+/).filter(Boolean)
-    const args = [...pre, '--profile', 'headless', '--json', '--permission-mode', this.opts.permissionMode ?? 'workspace-write', '-']
+    // dsh 0.2.1-rc.4 headless has no --permission-mode flag; its bundle patch reads
+    // DSH_PERMISSION_MODE for the sandbox policy instead, which newer releases also honour.
+    const args = [...pre, '--profile', 'headless', '--json', '-']
     const lines: string[] = []
     let stderr = ''
     const code = await new Promise<number | string>(resolve => {
-      const child = spawn(cmd as string, args, { cwd: ws, env: { ...process.env, ...this.opts.env }, stdio: ['pipe', 'pipe', 'pipe'] })
+      const child = spawn(cmd as string, args, { cwd: ws, env: { ...process.env, DSH_PERMISSION_MODE: this.opts.permissionMode ?? 'workspace-write', ...this.opts.env }, stdio: ['pipe', 'pipe', 'pipe'] })
       let buf = ''
       child.stdout.on('data', (d: Buffer) => {
         buf += d.toString('utf8')
@@ -308,7 +316,7 @@ export class HeadlessExecutor implements Executor {
       wallMs: Date.now() - started,
       ref: folded.sessionId ?? ws,
     }
-    if (code !== 0) res.error = `dsh exited ${code}: ${stderr.trim().slice(-600)}`
+    if (code !== 0) res.error = `dsh exited ${code}: ${folded.error ?? stderr.trim().slice(-600)}`
     return res
   }
 }
