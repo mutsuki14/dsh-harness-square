@@ -106,3 +106,11 @@ test('a rejected attempt records its reason even when the retry succeeds', async
   assert.equal(s.fellBack, false); assert.equal(s.attempts, 2)
   assert.match(s.rejections?.[0] ?? '', /limitation of this evaluation probe/)
 })
+
+test('autotrigger lines never name a specific skill-loading tool', async () => {
+  const { autotrigger } = await import('../src/core/tree.ts')
+  const t: Record<string, string> = { 'systemprompt.md': 'x', 'skills/ledger-total/SKILL.md': '---\nname: ledger-total\ndescription: total a ledger\n---\nbody' }
+  autotrigger(DEFAULT_SURFACE, t)
+  assert.match(t['tool_guidance.md'] ?? '', /Use skill `ledger-total` when: total a ledger/)
+  assert.ok(!/harness2_skill/.test(t['tool_guidance.md'] ?? ''))
+})

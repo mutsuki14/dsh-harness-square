@@ -76,7 +76,7 @@ export function renderHarnessPrompt(tree: HarnessTree, surface: SurfaceSpec = DE
   const skills = skillNames(surface, tree)
   if (skills.length && opts.inlineSkills !== false) {
     parts.push(
-      '## Skills\n\nUse a skill only when its trigger applies.\n\n' +
+      '## Skills\n\nThe full text of every skill is below; follow a skill when its trigger applies. Do not call any tool to load a skill.\n\n' +
         skills.map(n => `### skill \`${n}\`\n\n${body(tree[`${surface.skillDir}/${n}/SKILL.md`] ?? '')}`).join('\n\n'),
     )
   }

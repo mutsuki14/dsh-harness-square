@@ -44,7 +44,7 @@ different runtime cost and a different reach:
 | \`guardrails.md\` | standing rules | ALWAYS ON -- same cost |
 | \`memory.md\` | durable domain facts | ALWAYS ON -- same cost |
 | \`tool_guidance.md\` | how to use the tools; skill triggers | ALWAYS ON -- same cost |
-| \`skills/<name>/SKILL.md\` | a reusable workflow | ON DEMAND -- loaded through the \`harness2_skill\` tool |
+| \`skills/<name>/SKILL.md\` | a reusable workflow | ON DEMAND -- the runtime loads it when its trigger is named (never name a specific loading tool) |
 | \`sub_agents/<name>/AGENT.md\` | a delegated subagent brief | runs in its OWN context, returns text |
 | \`scripts/<name>.py\` (or .js/.sh) | a deterministic helper | run on demand through the shell |
 | \`plugins/<name>.json\` | a declarative loop policy | ALWAYS REGISTERED -- acts INSIDE the tool loop |

@@ -212,7 +212,9 @@ export function autotrigger(surface: SurfaceSpec, tree: HarnessTree): string[] {
     const body = alwaysOnText(surface, tree)
     if (body.includes(name)) continue
     const fm = frontmatter(tree[`${surface.skillDir}/${name}/SKILL.md`] ?? '') ?? {}
-    const line = `- Load skill \`${name}\` (harness2_skill) when: ${fm['description'] || 'its situation arises'}`
+    // Tool-agnostic on purpose: the live runtime loads skills via harness2_skill, headless dsh via its own
+    // `skill` tool, and a toolless probe has them inlined. Naming one tool breaks the others.
+    const line = `- Use skill \`${name}\` when: ${fm['description'] || 'its situation arises'}`
     if (body.length + line.length + 2 > surface.alwaysOnMax) continue
     const target = 'tool_guidance.md'
     const prev = tree[target] ?? ''
