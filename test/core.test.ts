@@ -124,3 +124,19 @@ test('frontmatter is canonicalised to YAML-safe quoted values (dsh rejects plain
   assert.equal(canonicalFrontmatter(good), good, 'idempotent')
   assert.equal(canonicalFrontmatter('no frontmatter'), 'no frontmatter')
 })
+
+test('eval scores deliverables against expect, and stripExpect keeps grading data out of the loop', async () => {
+  const { evaluateHarness, stripExpect } = await import('../src/core/eval.ts')
+  const t = { ...DEMO_TASKS[0]!, expect: { pattern: '^Total: 85\\.15$' } }
+  assert.equal('expect' in stripExpect(t), false)
+  const fixed = DEMO_BASE['scripts/summarize.js']!.replace('.filter(a => a > 0)', '')
+  const base = await evaluateHarness(new DemoExecutor(), [t], DEMO_BASE, { label: 'base', repeats: 2 })
+  const good = await evaluateHarness(new DemoExecutor(), [t], { ...DEMO_BASE, 'scripts/summarize.js': fixed }, { label: 'fixed', repeats: 2 })
+  assert.equal(base.passed, 0); assert.equal(good.passed, 2); assert.equal(good.rate, 1)
+  // the improver never sees the expected answer
+  const seen: string[] = []
+  const imp = new DemoImprover()
+  const spy = { name: 's', call: async (req: any) => { seen.push(req.mission); return imp.call(req) } }
+  await new Harness2({ executor: new DemoExecutor(), improver: spy, work: { work: 'reconcile signed ledgers' }, baseTree: DEMO_BASE, k: 1 }).runTask(stripExpect(t))
+  assert.ok(seen.length > 0 && seen.every(m => !m.includes('85\\.15$') && !m.includes('"pattern"')))
+})

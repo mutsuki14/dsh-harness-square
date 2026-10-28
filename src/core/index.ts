@@ -16,3 +16,4 @@ export * from './recursion.ts'
 export * from './selection.ts'
 export * from './pipeline.ts'
 export * from "./demo.ts"
+export * from "./eval.ts"

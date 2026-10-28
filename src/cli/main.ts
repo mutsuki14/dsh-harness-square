@@ -2,16 +2,19 @@
  * harness2-dsh CLI.
  *   harness2-dsh demo [--k 2] [--mode parallel|sequential] [--out runs/demo]
  *   harness2-dsh run --tasks tasks.json [--k 1] [--mode parallel] [--out runs] [--executor llm|headless]
+ *   harness2-dsh eval --tasks heldout.json --harness <dir>|base [--repeats 3] [--executor llm|headless]
  * `run` uses the DeepSeek API directly (DEEPSEEK_API_KEY) for the improver and the llm executor,
  * or `dsh --profile headless` subprocesses for --executor headless.
  */
 
-import { readFileSync } from 'node:fs'
+import { readFileSync, writeFileSync, mkdirSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { parseArgs } from 'node:util'
 import { DEMO_BASE, DEMO_TASKS, DemoExecutor, DemoImprover } from '../core/demo.ts'
 import { Harness2 } from '../core/pipeline.ts'
 import type { Mode } from '../core/recursion.ts'
+import { evaluateHarness, stripExpect, type EvalTask } from '../core/eval.ts'
+import { DEFAULT_SURFACE, readTree } from '../core/tree.ts'
 import type { Executor, TaskSpec, WorkPrompts } from '../core/spec.ts'
 import { DEFAULT_BASE_TREE, DEFAULT_WORK } from '../dsh/defaults.ts'
 import { HeadlessExecutor, toollessRollout } from '../dsh/executors.ts'
@@ -29,6 +32,9 @@ const { positionals, values } = parseArgs({
     model: { type: 'string', default: process.env['HARNESS2_IMPROVER_MODEL'] ?? 'deepseek-v4-pro' },
     'solver-model': { type: 'string', default: process.env['HARNESS2_SOLVER_MODEL'] ?? 'deepseek-flash' },
     price: { type: 'string', default: process.env['HARNESS2_PRICE'] ?? '' },
+    harness: { type: 'string', multiple: true },
+    repeats: { type: 'string', default: '1' },
+    width: { type: 'string', default: '4' },
     help: { type: 'boolean', short: 'h' },
   },
 })
@@ -60,12 +66,11 @@ if (cmd === 'demo') {
     }
   }
   console.log(`artefacts: ${out}`)
-} else if (cmd === 'run') {
+} else if (cmd === 'run' || cmd === 'eval') {
   if (!values.tasks) throw new Error('--tasks is required')
-  const spec = JSON.parse(readFileSync(values.tasks, 'utf8')) as { work?: WorkPrompts; tasks: TaskSpec[] }
+  const spec = JSON.parse(readFileSync(values.tasks, 'utf8')) as { work?: WorkPrompts; tasks: EvalTask[] }
   const apiKey = process.env['DEEPSEEK_API_KEY'] ?? ''
   const baseUrl = process.env['DEEPSEEK_BASE_URL']
-  const improver = new DeepSeekApiImprover({ apiKey, model: values.model, ...(baseUrl ? { baseUrl } : {}), ...(price ? { price } : {}) })
   const out = resolve(values.out ?? 'runs')
   const executor: Executor =
     values.executor === 'headless'
@@ -83,10 +88,27 @@ if (cmd === 'demo') {
             }
           },
         }
-  const h2 = new Harness2({ executor, improver, work: spec.work ?? DEFAULT_WORK, baseTree: DEFAULT_BASE_TREE, k, mode, runsDir: join(out, 'runs'), libraryDir: join(out, 'library'), onProgress: log })
-  for (const r of await h2.runStream(spec.tasks)) {
-    const cost = price ? ` usd=${r.usd.toFixed(4)}` : ''
-    console.log(`${r.taskId}: adopted=${r.selection.chosenLabel} library=${r.libraryUpdated} tokens_in=${r.usage.inputTokens} tokens_cached=${r.usage.cacheReadTokens ?? 0} tokens_out=${r.usage.outputTokens}${cost}${r.usageUnknown.length ? ` usage_unknown=${r.usageUnknown.join(',')}` : ''}`)
+  if (cmd === 'eval') {
+    const harnesses = values.harness?.length ? values.harness : ['base']
+    const report: object[] = []
+    for (const h of harnesses) {
+      const tree = h === 'base' ? DEFAULT_BASE_TREE : readTree(DEFAULT_SURFACE, resolve(h))
+      if (h !== 'base' && !Object.keys(tree).length) throw new Error(`no harness files under ${h}`)
+      const r = await evaluateHarness(executor, spec.tasks, tree, { label: h === 'base' ? 'base' : `h${report.length}`, repeats: Number(values.repeats), width: Number(values.width) })
+      console.log(`${h}: ${r.passed}/${r.runs} passed (${(r.rate * 100).toFixed(1)}%), delivered ${r.delivered}/${r.runs}, tokens in/cached/out ${r.usage.inputTokens}/${r.usage.cacheReadTokens}/${r.usage.outputTokens}`)
+      for (const t of r.perTask) console.log(`  ${t.id}: ${t.passed}/${t.runs}  ${t.samples.map(s => JSON.stringify(s)).join(' ')}`)
+      report.push({ harness: h, ...r })
+    }
+    mkdirSync(out, { recursive: true })
+    writeFileSync(join(out, 'eval.json'), `${JSON.stringify(report, null, 2)}\n`)
+  } else {
+    const improver = new DeepSeekApiImprover({ apiKey, model: values.model, ...(baseUrl ? { baseUrl } : {}), ...(price ? { price } : {}) })
+    const h2 = new Harness2({ executor, improver, work: spec.work ?? DEFAULT_WORK, baseTree: DEFAULT_BASE_TREE, k, mode, runsDir: join(out, 'runs'), libraryDir: join(out, 'library'), onProgress: log })
+    // Grading data never enters the improvement loop.
+    for (const r of await h2.runStream(spec.tasks.map(stripExpect))) {
+      const cost = price ? ` usd=${r.usd.toFixed(4)}` : ''
+      console.log(`${r.taskId}: adopted=${r.selection.chosenLabel} library=${r.libraryUpdated} tokens_in=${r.usage.inputTokens} tokens_cached=${r.usage.cacheReadTokens ?? 0} tokens_out=${r.usage.outputTokens}${cost}${r.usageUnknown.length ? ` usage_unknown=${r.usageUnknown.join(',')}` : ''}`)
+    }
   }
 } else {
   console.error(`unknown command ${cmd}`)
