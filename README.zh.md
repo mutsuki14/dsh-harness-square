@@ -51,6 +51,11 @@ DEEPSEEK_API_KEY=... node bin/harness2-dsh.js run --tasks examples/tasks.json
 node bin/harness2-dsh.js eval --tasks heldout.json --harness base --harness <adopted 目录> --repeats 3
 ```
 
-实测（仅 deepseek-flash）：在 200 行多币种账本任务族上，base harness 两次均 11/12，从一个训练任务中采纳的 harness 同样 11/12。改进内容正确且可迁移，但没有提高准确率，因为 flash 在 base 下已有约 92% 的正确率，剩下的错误是偶发的几分钱算术误差。
+实测（仅 deepseek-flash，toolless 执行器）：
+
+- 200 行多币种账本：base 两次均 11/12，采纳的 harness 也是 11/12。改进内容正确且可迁移，但没有提分，剩下的错误是偶发的几分钱误差。
+- 30 行、120 行账本以及"规则只写在 POLICY.md 里"的任务族：base 全对。
+- 400 行账本：base 2/8、3/8；同一次改进产生的候选 `inv1` 4/8、`agg1` 4/8、`dom1` 1/8。几乎所有失败都是模型撞上 65,536 的输出 token 上限，而不是规则理解错。按这个样本量，4/8 对 2–3/8 还在噪声范围内。
+- 这一族真正有效的手段是写脚本计算，只有带工具的 headless 探针才能验证；toolless 探针测不出来。
 
 详细配置见 [README.md](README.md)。许可证：Apache-2.0。

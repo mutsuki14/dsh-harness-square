@@ -122,20 +122,33 @@ End-to-end in a sandbox with `@deepseek-ai/dsh@0.2.1-rc.4` and `deepseek-flash` 
 | agent calls `harness2_improve` k=2 (headless) | R=8 / P=6, 8 isolated probes, blind selection adopted `agg2`, library updated; usage recorded for every stage |
 | token / cost | usage incl. cache reads observed from API and dsh `step_end`; cost recomputed independently and matched |
 | held-out eval (toolless, flash) | 200-row multi-currency ledger family (duplicates by `seq`, reversals by `ref`, half-even rounding per line). Base harness 11/12 and 11/12 across two runs; the harness adopted from one training task also scored 11/12 (4 held-out tasks × 3 repeats) |
+| held-out eval, 400 rows (toolless, flash) | base 2/8 and 3/8 (two runs); candidates from one improvement run: `inv1` 4/8, `agg1` 4/8, `dom1` 1/8. Almost every miss is the model hitting its 65,536-token output limit, not a wrong rule |
 
-On the held-out ledger family the adopted harness was correct and transferred (a domain skill with the rule
-order, a per-line rounding procedure and a removed-row audit), but it did **not** raise accuracy: `deepseek-flash`
-already solves ~92% without it, and the remaining misses are occasional arithmetic slips of a few cents.
-Easier families (30 and 120 rows) were solved 100% by the base harness. Showing a measured gain will need a
-task family where the base harness fails systematically, not by chance.
+What the held-out runs show, honestly:
+
+- **No measured gain yet.** On the 200-row family the adopted harness was correct and transferred (a domain
+  skill with the rule order, per-line rounding and a removed-row audit) but tied the base at ~92%: the remaining
+  misses are occasional slips of a few cents. A policy-driven family (rules only in a POLICY.md, 50 rows) and
+  the 30- and 120-row families were solved 100% by the base harness.
+- **At 400 rows the bottleneck is output budget, not rules.** A single toolless completion runs out of output
+  tokens about half the time. The best candidates (`inv1`, `agg1`: "keep working compact, carry a running
+  subtotal") reached 4/8 against 2–3/8 for base. That is within noise at this sample size, and `dom1` was worse
+  (1/8). The lever that would fix this family is a script, which only exists when the probes have tools
+  (the `headless` executor); toolless probes cannot test it.
+- **Selection can legitimately adopt nothing.** In three improvement runs on the 400-row training task, every
+  final rollout was cut off at least once, so blind selection had no artifact to choose from and kept the
+  starting harness. This matches harness2 (the finals-only pool has no base fallback); the CLI now prints
+  `adopted=none (selection failed: …; kept base)` instead of an empty label.
 
 Bugs these runs found and fixed: tool-call markup counted as a deliverable; probe limitation written into the
 harness; snake_case skills ignored by dsh; YAML-invalid skill frontmatter ignored by dsh; headless workspaces
 reading the outer repo; shared-cwd contamination between workflow probes and writes into the caller's
 workspace; skill triggers naming the wrong tool; candidate policies not enforced in headless probes; reports
 lost when a workflow child's structured output failed; cache tokens missing from cost; long non-streaming
-API calls cut mid-generation (`terminated`), which polluted eval results as wrong answers. The client now
-streams.
+API calls cut mid-generation (`terminated`), which polluted eval results as wrong answers (the client now
+streams); truncated answers (`finish_reason=length`) shown to the improver as an unexplained "PRODUCED
+NOTHING" (evidence now states the cause and every rollout's output tokens, and the toolless note warns that
+adding passes can push a near-limit rollout over its output budget).
 
 ## Development
 
