@@ -149,3 +149,19 @@ test('workflow probe that writes outside its scratch dir is voided; scratch writ
   const bad = await new WorkflowExecutor(engine('result.txt') as any, {}, { watchDir: shared }).execute({ id: 't', domain: 'd', prompt: 'p' }, {}, 't.agg1')
   assert.equal(bad.ok, false); assert.match(bad.error ?? '', /outside its scratch directory.*result\.txt/)
 })
+
+test('workflow probe without a structured report is judged on the files it wrote in scratch', async () => {
+  const { WorkflowExecutor } = await import('../src/dsh/executors.ts')
+  const { mkdirSync, writeFileSync } = await import('node:fs')
+  const shared = mkdtempSync(join(tmpdir(), 'h2wf2-'))
+  writeFileSync(join(shared, 'export.csv'), 'csv')
+  const engine = { start: (req: any) => ({ id: 'r', cancel() {}, async dispose() {}, result: (async () => {
+    const d = join(shared, req.args.scratch); mkdirSync(d, { recursive: true })
+    writeFileSync(join(d, 'export.csv'), 'csv'); writeFileSync(join(d, 'result.txt'), 'Total: 975.35\n')
+    return { stopReason: 'completed', value: null }
+  })() }) }
+  const r = await new WorkflowExecutor(engine as any, {}, { watchDir: shared }).execute({ id: 't', domain: 'd', prompt: 'p' }, {}, 't.inv1')
+  assert.equal(r.ok, true); assert.equal(r.delivered, true)
+  assert.match(r.deliverable, /result\.txt[\s\S]*Total: 975\.35/)
+  assert.ok(!r.deliverable.includes('export.csv'), 'verbatim input copies are not deliverables')
+})

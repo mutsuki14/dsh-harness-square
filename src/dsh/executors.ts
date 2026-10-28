@@ -156,6 +156,17 @@ export class WorkflowExecutor implements Executor {
     }
     if (signal) req.signal = signal
     const watchDir = this.opts.watchDir ?? process.cwd()
+    const scratchAbs = join(watchDir, (req.args as { scratch: string }).scratch)
+    /** Files the probe produced in its scratch dir, excluding verbatim copies of the shared inputs. */
+    const scratchFiles = (): string[] => {
+      if (!existsSync(scratchAbs)) return []
+      const fresh = new Map<string, number>()
+      for (const [rel] of snapshotFiles(scratchAbs)) {
+        const shared = join(watchDir, rel)
+        if (existsSync(shared) && readFileSync(shared).equals(readFileSync(join(scratchAbs, rel)))) fresh.set(rel, statSync(join(scratchAbs, rel)).mtimeMs)
+      }
+      return producedFiles(scratchAbs, fresh)
+    }
     let before: Map<string, number> | undefined
     try {
       before = snapshotFiles(watchDir)
@@ -186,8 +197,13 @@ export class WorkflowExecutor implements Executor {
         return voidIfEscaped({ ok: false, delivered: false, deliverable: '', trajectory: '', error: `workflow ${res.stopReason}: ${res.error ?? ''}`, wallMs: Date.now() - started, ref: run.id })
       }
       const v = (res.value ?? null) as { deliverable?: string; steps?: string[]; blockers?: string } | null
-      if (!v) return voidIfEscaped({ ok: true, delivered: false, deliverable: '', trajectory: '(child failed before producing a report)', wallMs: Date.now() - started, ref: run.id })
-      const deliverable = String(v.deliverable ?? '')
+      const files = scratchFiles()
+      if (!v) {
+        // The child's structured report failed, but the work it left on disk is still the deliverable.
+        const deliverable = files.join('\n\n')
+        return voidIfEscaped({ ok: true, delivered: deliverable.trim().length > 0, deliverable, trajectory: '(child produced no structured report; deliverable reconstructed from the files it wrote in its scratch directory)', wallMs: Date.now() - started, ref: run.id })
+      }
+      const deliverable = [String(v.deliverable ?? ''), ...files].filter(x => x.trim()).join('\n\n')
       return voidIfEscaped({
         ok: true,
         delivered: deliverable.trim().length > 0,
