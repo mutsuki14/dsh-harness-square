@@ -41,8 +41,9 @@ async function backoff(attempt: number, signal?: AbortSignal): Promise<void> {
 }
 
 /** Stream one completion through `ctx.llm` and return its text. */
-export async function streamText(llm: LlmService, opts: { provider: string; model: string; system?: string; prompt: string; temperature?: number; maxTokens?: number; signal?: AbortSignal }): Promise<{ text: string; inputTokens: number; outputTokens: number; cacheReadTokens: number }> {
+export async function streamText(llm: LlmService, opts: { provider: string; model: string; system?: string; prompt: string; temperature?: number; maxTokens?: number; signal?: AbortSignal }): Promise<{ text: string; inputTokens: number; outputTokens: number; cacheReadTokens: number; finishReason?: string }> {
   let text = ''
+  let finishReason: string | undefined
   let inputTokens = 0
   let outputTokens = 0
   let cacheReadTokens = 0
@@ -65,9 +66,10 @@ export async function streamText(llm: LlmService, opts: { provider: string; mode
       if (chunk.reason.kind === 'error' || chunk.reason.kind === 'aborted') {
         throw new ImproverError(`model call ${chunk.reason.kind}: ${chunk.reason.failure?.message ?? 'unknown failure'}`)
       }
+      finishReason = chunk.reason.kind
     }
   }
-  return { text, inputTokens, outputTokens, cacheReadTokens }
+  return { text, inputTokens, outputTokens, cacheReadTokens, ...(finishReason ? { finishReason } : {}) }
 }
 
 export class LlmImprover implements Improver {

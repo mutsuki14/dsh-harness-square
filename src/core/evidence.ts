@@ -51,7 +51,7 @@ export function clip(text: string, max: number): string {
 }
 
 function rolloutBlock(r: Rollout, lim: EvidenceLimits): string {
-  const status = !r.ok ? `FAILED TO RUN${r.error ? `: ${r.error}` : ''}` : r.delivered ? 'delivered' : 'PRODUCED NOTHING'
+  const status = !r.ok ? `FAILED TO RUN${r.error ? `: ${r.error}` : ''}` : r.delivered ? 'delivered' : `PRODUCED NOTHING${r.error ? `: ${r.error}` : ''}`
   return [
     `### rollout \`${r.label}\` -- ${status}`,
     '',

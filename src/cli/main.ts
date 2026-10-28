@@ -84,10 +84,7 @@ if (cmd === 'demo') {
             // Transport failures (resets, early stream ends) are retried: they say nothing about the harness.
             for (let attempt = 1; attempt <= 3; attempt++) try {
               const r = await deepseekChat({ apiKey, model: values['solver-model'], ...(baseUrl ? { baseUrl } : {}) }, renderHarnessPrompt(harness), task.prompt + Object.entries(task.sources ?? {}).map(([n, b]) => `\n<source name="${n}">\n${b}\n</source>`).join(''))
-              const rollout = toollessRollout(r.text, `[ASSISTANT]\n${r.text}`, Date.now() - started, { inputTokens: r.inputTokens, outputTokens: r.outputTokens, cacheReadTokens: r.cacheReadTokens }, price)
-              // An empty or cut-off answer is a real (harness-attributable) failure, not a transport one: keep it, but say why.
-              if (!r.text.trim() || (r.finishReason && r.finishReason !== 'stop')) rollout.error = `no usable answer (finish_reason=${r.finishReason ?? 'unknown'}, output_tokens=${r.outputTokens})`
-              return rollout
+              return toollessRollout(r.text, `[ASSISTANT]\n${r.text}`, Date.now() - started, { inputTokens: r.inputTokens, outputTokens: r.outputTokens, cacheReadTokens: r.cacheReadTokens }, price, r.finishReason)
             } catch (e) {
               lastErr = (e as Error).message
               if (/API 4\d\d/.test(lastErr)) break
@@ -115,7 +112,7 @@ if (cmd === 'demo') {
     // Grading data never enters the improvement loop.
     for (const r of await h2.runStream(spec.tasks.map(stripExpect))) {
       const cost = price ? ` usd=${r.usd.toFixed(4)}` : ''
-      console.log(`${r.taskId}: adopted=${r.selection.chosenLabel} library=${r.libraryUpdated} tokens_in=${r.usage.inputTokens} tokens_cached=${r.usage.cacheReadTokens ?? 0} tokens_out=${r.usage.outputTokens}${cost}${r.usageUnknown.length ? ` usage_unknown=${r.usageUnknown.join(',')}` : ''}`)
+      console.log(`${r.taskId}: adopted=${r.selection.ok ? r.selection.chosenLabel : `none (selection failed: ${r.selection.error ?? 'unknown'}; kept ${r.startedFrom})`} library=${r.libraryUpdated} tokens_in=${r.usage.inputTokens} tokens_cached=${r.usage.cacheReadTokens ?? 0} tokens_out=${r.usage.outputTokens}${cost}${r.usageUnknown.length ? ` usage_unknown=${r.usageUnknown.join(',')}` : ''}`)
     }
   }
 } else {
