@@ -118,6 +118,45 @@ export interface DeepSeekApiOptions {
   price?: Price
 }
 
+type ChatUsage = { prompt_tokens?: number; completion_tokens?: number; prompt_cache_hit_tokens?: number; prompt_cache_miss_tokens?: number }
+
+/** Parse an OpenAI-compatible SSE body; content only (reasoning is not part of the answer). */
+export async function readChatStream(res: Response): Promise<{ text: string; inputTokens: number; outputTokens: number; cacheReadTokens: number }> {
+  if (!res.body) throw new ImproverError('DeepSeek API returned no body')
+  const decoder = new TextDecoder()
+  let buf = ''
+  let text = ''
+  let usage: ChatUsage | undefined
+  let done = false
+  const onLine = (line: string) => {
+    if (!line.startsWith('data:')) return // comments / keep-alives
+    const data = line.slice(5).trim()
+    if (data === '[DONE]') { done = true; return }
+    let chunk: { choices?: { delta?: { content?: string | null } }[]; usage?: ChatUsage | null; error?: { message?: string } }
+    try { chunk = JSON.parse(data) } catch { return }
+    if (chunk.error) throw new ImproverError(`DeepSeek API stream error: ${chunk.error.message ?? 'unknown'}`)
+    text += chunk.choices?.[0]?.delta?.content ?? ''
+    if (chunk.usage) usage = chunk.usage
+  }
+  for await (const part of res.body as unknown as AsyncIterable<Uint8Array>) {
+    buf += decoder.decode(part, { stream: true })
+    let nl: number
+    while ((nl = buf.indexOf('\n')) >= 0) {
+      onLine(buf.slice(0, nl).replace(/\r$/, ''))
+      buf = buf.slice(nl + 1)
+    }
+  }
+  if (buf.trim()) onLine(buf.trim())
+  if (!done && !usage) throw new ImproverError('DeepSeek API stream ended early')
+  return {
+    text,
+    // prompt_tokens = cache hits + misses; report misses as input and hits as cache reads (dsh convention).
+    inputTokens: usage?.prompt_cache_miss_tokens ?? Math.max(0, (usage?.prompt_tokens ?? 0) - (usage?.prompt_cache_hit_tokens ?? 0)),
+    outputTokens: usage?.completion_tokens ?? 0,
+    cacheReadTokens: usage?.prompt_cache_hit_tokens ?? 0,
+  }
+}
+
 /** Minimal chat-completions client for the DeepSeek API (OpenAI-compatible). */
 export async function deepseekChat(opts: DeepSeekApiOptions, system: string, prompt: string, signal?: AbortSignal): Promise<{ text: string; inputTokens: number; outputTokens: number; cacheReadTokens: number }> {
   const base = (opts.baseUrl ?? 'https://api.deepseek.com').replace(/\/+$/, '')
@@ -132,7 +171,10 @@ export async function deepseekChat(opts: DeepSeekApiOptions, system: string, pro
         ...(system ? [{ role: 'system', content: system }] : []),
         { role: 'user', content: prompt },
       ],
-      stream: false,
+      // Stream: long completions keep the connection active (a silent non-streaming request
+      // can be cut by idle timeouts mid-generation, surfacing as "terminated").
+      stream: true,
+      stream_options: { include_usage: true },
     }
     if (opts.temperature !== undefined) body['temperature'] = opts.temperature
     if (opts.maxTokens !== undefined) body['max_tokens'] = opts.maxTokens
@@ -143,14 +185,7 @@ export async function deepseekChat(opts: DeepSeekApiOptions, system: string, pro
       signal: ctl.signal,
     })
     if (!res.ok) throw new ImproverError(`DeepSeek API ${res.status}: ${(await res.text()).slice(0, 400)}`)
-    const json = (await res.json()) as { choices?: { message?: { content?: string } }[]; usage?: { prompt_tokens?: number; completion_tokens?: number; prompt_cache_hit_tokens?: number; prompt_cache_miss_tokens?: number } }
-    return {
-      text: json.choices?.[0]?.message?.content ?? '',
-      // prompt_tokens = cache hits + misses; report misses as input and hits as cache reads (dsh convention).
-      inputTokens: json.usage?.prompt_cache_miss_tokens ?? Math.max(0, (json.usage?.prompt_tokens ?? 0) - (json.usage?.prompt_cache_hit_tokens ?? 0)),
-      outputTokens: json.usage?.completion_tokens ?? 0,
-      cacheReadTokens: json.usage?.prompt_cache_hit_tokens ?? 0,
-    }
+    return await readChatStream(res)
   } finally {
     clearTimeout(timer)
     signal?.removeEventListener('abort', onAbort)

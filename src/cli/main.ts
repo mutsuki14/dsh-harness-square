@@ -80,12 +80,17 @@ if (cmd === 'demo') {
           toolless: true,
           async execute(task, harness) {
             const started = Date.now()
-            try {
+            let lastErr = ''
+            // Transport failures (resets, early stream ends) are retried: they say nothing about the harness.
+            for (let attempt = 1; attempt <= 3; attempt++) try {
               const r = await deepseekChat({ apiKey, model: values['solver-model'], ...(baseUrl ? { baseUrl } : {}) }, renderHarnessPrompt(harness), task.prompt + Object.entries(task.sources ?? {}).map(([n, b]) => `\n<source name="${n}">\n${b}\n</source>`).join(''))
               return toollessRollout(r.text, `[ASSISTANT]\n${r.text}`, Date.now() - started, { inputTokens: r.inputTokens, outputTokens: r.outputTokens, cacheReadTokens: r.cacheReadTokens }, price)
             } catch (e) {
-              return { ok: false, delivered: false, deliverable: '', trajectory: '', error: (e as Error).message }
+              lastErr = (e as Error).message
+              if (/API 4\d\d/.test(lastErr)) break
+              await new Promise(r => setTimeout(r, 1000 * attempt))
             }
+            return { ok: false, delivered: false, deliverable: '', trajectory: '', error: lastErr }
           },
         }
   if (cmd === 'eval') {
