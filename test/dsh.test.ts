@@ -134,3 +134,18 @@ test('steer message is built even when @deepseek-ai/dsh-llm cannot be resolved',
   const m = (await createSteerMessage('check it', 'x'.repeat(200))) as any
   assert.equal(m.role, 'user'); assert.equal(m.content[0].text, 'check it'); assert.ok(m.id); assert.ok(m.source.summary.length <= 120)
 })
+
+test('workflow probe that writes outside its scratch dir is voided; scratch writes are fine', async () => {
+  const { WorkflowExecutor } = await import('../src/dsh/executors.ts')
+  const { mkdirSync, writeFileSync } = await import('node:fs')
+  const shared = mkdtempSync(join(tmpdir(), 'h2wf-'))
+  writeFileSync(join(shared, 'export.csv'), 'a')
+  const engine = (write: string) => ({ start: (req: any) => ({ id: 'r', cancel() {}, async dispose() {}, result: (async () => {
+    const p = join(shared, write); mkdirSync(join(p, '..'), { recursive: true }); writeFileSync(p, String(Math.random()))
+    return { stopReason: 'completed', value: { deliverable: 'Total: 1.00', steps: ['s'], blockers: '' } }
+  })() }) })
+  const ok = await new WorkflowExecutor(engine(`.harness2-probes/${'t.base1'}/result.txt`) as any, {}, { watchDir: shared }).execute({ id: 't', domain: 'd', prompt: 'p' }, {}, 't.base1')
+  assert.equal(ok.ok, true)
+  const bad = await new WorkflowExecutor(engine('result.txt') as any, {}, { watchDir: shared }).execute({ id: 't', domain: 'd', prompt: 'p' }, {}, 't.agg1')
+  assert.equal(bad.ok, false); assert.match(bad.error ?? '', /outside its scratch directory.*result\.txt/)
+})

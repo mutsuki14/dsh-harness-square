@@ -97,6 +97,8 @@ export interface WorkflowExecutorOptions {
   /** Subagent provider for the child (default `spawn`: a fresh agent with no parent context). */
   subagentProvider?: string
   surface?: SurfaceSpec
+  /** The working directory children share (default `process.cwd()`); watched for writes outside each probe's scratch dir. */
+  watchDir?: string
 }
 
 /**
@@ -117,7 +119,7 @@ const schema = {
 phase('Rollout')
 const prompt = [
   'You are executing one task under the operating harness below. Follow it.',
-  'ISOLATION: you are one of several independent probe runs of the same task. Before doing anything else, create the directory ' + args.scratch + ' and copy into it only the input files the task names. Do ALL work, scripts and outputs inside that directory, refer to files there, and never create, modify or read other files you or another run may have produced elsewhere in the working directory.',
+  'ISOLATION: you are one of several independent probe runs of the same task. Before doing anything else, create the directory ' + args.scratch + ' and copy into it only the input files the task names. From then on TREAT ' + args.scratch + ' AS THE CURRENT DIRECTORY: every relative path in the task -- inputs AND outputs, including any file the task says to write in "the current directory" -- resolves inside it. Never create, modify or copy files anywhere else; writes outside it are detected and void this run.',
   'The <harness> below is the ONLY harness that applies to this run. Ignore any other operating-harness text in your system prompt, and do not call the harness2_skill tool: every skill this harness defines is inlined below.',
   '<harness>\n' + args.harness + '\n</harness>',
   '<task>\n' + args.task + '\n</task>',
@@ -153,27 +155,49 @@ export class WorkflowExecutor implements Executor {
       parent: this.parent,
     }
     if (signal) req.signal = signal
+    const watchDir = this.opts.watchDir ?? process.cwd()
+    let before: Map<string, number> | undefined
+    try {
+      before = snapshotFiles(watchDir)
+    } catch {
+      before = undefined
+    }
+    /** Writes outside `.harness2-probes/` during this probe's window void the rollout. */
+    const escaped = (): string[] => {
+      if (!before) return []
+      try {
+        const after = snapshotFiles(watchDir)
+        return [...after.entries()].filter(([rel, m]) => before!.get(rel) !== m).map(([rel]) => rel).sort()
+      } catch {
+        return []
+      }
+    }
+    const voidIfEscaped = (r: ExecResult): ExecResult => {
+      const out = escaped()
+      if (!out.length) return r
+      return { ...r, ok: false, error: `probe wrote outside its scratch directory (shared workspace ${watchDir}): ${out.slice(0, 8).join(', ')}${out.length > 8 ? ', ...' : ''}` }
+    }
     const run = this.engine.start(req)
     const onAbort = () => run.cancel('harness2 aborted')
     signal?.addEventListener('abort', onAbort, { once: true })
     try {
       const res = await run.result
       if (res.stopReason !== 'completed') {
-        return { ok: false, delivered: false, deliverable: '', trajectory: '', error: `workflow ${res.stopReason}: ${res.error ?? ''}`, wallMs: Date.now() - started, ref: run.id }
+        return voidIfEscaped({ ok: false, delivered: false, deliverable: '', trajectory: '', error: `workflow ${res.stopReason}: ${res.error ?? ''}`, wallMs: Date.now() - started, ref: run.id })
       }
       const v = (res.value ?? null) as { deliverable?: string; steps?: string[]; blockers?: string } | null
-      if (!v) return { ok: true, delivered: false, deliverable: '', trajectory: '(child failed before producing a report)', wallMs: Date.now() - started, ref: run.id }
+      if (!v) return voidIfEscaped({ ok: true, delivered: false, deliverable: '', trajectory: '(child failed before producing a report)', wallMs: Date.now() - started, ref: run.id })
       const deliverable = String(v.deliverable ?? '')
-      return {
+      return voidIfEscaped({
         ok: true,
         delivered: deliverable.trim().length > 0,
         deliverable,
         trajectory: [...(v.steps ?? []).map((s, i) => `[STEP ${i + 1}] ${s}`), v.blockers ? `[BLOCKERS] ${v.blockers}` : ''].filter(Boolean).join('\n'),
         wallMs: Date.now() - started,
         ref: run.id,
-      }
+      })
     } catch (e) {
-      return { ok: false, delivered: false, deliverable: '', trajectory: '', error: (e as Error).message, wallMs: Date.now() - started, ref: run.id }
+      return voidIfEscaped({ ok: false, delivered: false, deliverable: '', trajectory: '', error: (e as Error).message, wallMs: Date.now() - started, ref: run.id })
     } finally {
       signal?.removeEventListener('abort', onAbort)
       await run.dispose().catch(() => undefined)
@@ -209,7 +233,7 @@ export function probeModulePath(): string {
 }
 
 /** Paths an install or seed places in a probe workspace; excluded from produced-file collection. */
-const INSTALLED = ['.git', '.harness2', '.agents', 'AGENTS.md', '.harness2-probe.patch.yml']
+const INSTALLED = ['.git', '.harness2', '.harness2-probes', '.agents', 'AGENTS.md', '.harness2-probe.patch.yml']
 
 /** Relative path -> mtime for every file under `dir`, skipping installed paths. */
 export function snapshotFiles(dir: string): Map<string, number> {
