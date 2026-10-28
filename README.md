@@ -98,12 +98,24 @@ Run artefacts are written to `runs/<task>/<mode>-k<k>/`: every harness tree, eve
 
 ## Verified against real DeepSeek Harness
 
-Tested in a sandbox with `@deepseek-ai/dsh@0.2.1-rc.4` and `deepseek-flash`:
+End-to-end in a sandbox with `@deepseek-ai/dsh@0.2.1-rc.4` and `deepseek-flash` (every row is a live run):
 
-- the bundle installs with `dsh plugin add` and appears in `--dump-config`; all plugins load
-- the system-prompt section, skill tool and pre/post/stop policy hooks work on dsh's real event pipeline
-- a real dsh agent called `harness2_improve` itself: 4 isolated headless probes, each with its own `.git`, a seeded copy of the input file, and a correct answer; the caller's workspace was left untouched
-- headless probes load harness skills through dsh's own `skill` tool and run `bash` under bubblewrap
+| path | result |
+|---|---|
+| bundle install / load | `dsh plugin add` + `--dump-config` show the layer; all plugins activate |
+| activated harness in a live agent turn | the agent loaded the skill via `harness2_skill`; the `pre` rule denied `rm` (file kept); the `post` reminder was appended to the `write` result and the agent re-read the file; the `stop` rule steered one extra step |
+| activated harness scripts | the agent ran `scripts/*.py` from the active harness dir by absolute path |
+| headless probe of a candidate | dsh loaded the candidate skill with its own `skill` tool; the candidate's `pre` deny rule was enforced in the probe via the `harness2-probe` plugin; `bash` ran under bubblewrap |
+| agent calls `harness2_improve` (headless) | 4 isolated probes, each with its own `.git` and seeded input; caller workspace untouched |
+| agent calls `harness2_improve` (workflow) | probes stayed in `.harness2-probes/<runId>/`; caller workspace untouched |
+| parallel k=2 and sequential k=2 (CLI) | R=4k / P=3k; non-trivial blind selection; a 2-task stream warm-started task 2 from task 1's adopted harness (identical tree) |
+| token / cost | usage incl. cache reads observed from API and dsh `step_end`; cost recomputed independently and matched |
+
+Bugs these runs found and fixed: tool-call markup counted as a deliverable; probe limitation written into the
+harness; snake_case skills ignored by dsh; YAML-invalid skill frontmatter ignored by dsh; headless workspaces
+reading the outer repo; shared-cwd contamination between workflow probes and writes into the caller's
+workspace; skill triggers naming the wrong tool; candidate policies not enforced in headless probes; reports
+lost when a workflow child's structured output failed; cache tokens missing from cost.
 
 ## Development
 
