@@ -172,12 +172,12 @@ test('readChatStream joins SSE content deltas and splits cached usage', async ()
     ': keep-alive',
     'data: {"choices":[{"delta":{"reasoning_content":"hmm"}}]}',
     'data: {"choices":[{"delta":{"content":"Total: "}}]}',
-    'data: {"choices":[{"delta":{"content":"12.50"}}]}',
+    'data: {"choices":[{"delta":{"content":"12.50"},"finish_reason":"stop"}]}',
     'data: {"choices":[],"usage":{"prompt_tokens":100,"completion_tokens":7,"prompt_cache_hit_tokens":64,"prompt_cache_miss_tokens":36}}',
     'data: [DONE]',
     '',
   ].join('\r\n')
   const r = await readChatStream(new Response(sse))
-  assert.deepEqual(r, { text: 'Total: 12.50', inputTokens: 36, outputTokens: 7, cacheReadTokens: 64 })
+  assert.deepEqual(r, { text: 'Total: 12.50', inputTokens: 36, outputTokens: 7, cacheReadTokens: 64, finishReason: 'stop' })
   await assert.rejects(readChatStream(new Response('data: {"choices":[{"delta":{"content":"Tot"}}]}\n')), /ended early/)
 })

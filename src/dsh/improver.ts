@@ -121,21 +121,23 @@ export interface DeepSeekApiOptions {
 type ChatUsage = { prompt_tokens?: number; completion_tokens?: number; prompt_cache_hit_tokens?: number; prompt_cache_miss_tokens?: number }
 
 /** Parse an OpenAI-compatible SSE body; content only (reasoning is not part of the answer). */
-export async function readChatStream(res: Response): Promise<{ text: string; inputTokens: number; outputTokens: number; cacheReadTokens: number }> {
+export async function readChatStream(res: Response): Promise<{ text: string; inputTokens: number; outputTokens: number; cacheReadTokens: number; finishReason?: string }> {
   if (!res.body) throw new ImproverError('DeepSeek API returned no body')
   const decoder = new TextDecoder()
   let buf = ''
   let text = ''
   let usage: ChatUsage | undefined
   let done = false
+  let finishReason: string | undefined
   const onLine = (line: string) => {
     if (!line.startsWith('data:')) return // comments / keep-alives
     const data = line.slice(5).trim()
     if (data === '[DONE]') { done = true; return }
-    let chunk: { choices?: { delta?: { content?: string | null } }[]; usage?: ChatUsage | null; error?: { message?: string } }
+    let chunk: { choices?: { delta?: { content?: string | null }; finish_reason?: string | null }[]; usage?: ChatUsage | null; error?: { message?: string } }
     try { chunk = JSON.parse(data) } catch { return }
     if (chunk.error) throw new ImproverError(`DeepSeek API stream error: ${chunk.error.message ?? 'unknown'}`)
     text += chunk.choices?.[0]?.delta?.content ?? ''
+    finishReason = chunk.choices?.[0]?.finish_reason ?? finishReason
     if (chunk.usage) usage = chunk.usage
   }
   for await (const part of res.body as unknown as AsyncIterable<Uint8Array>) {
@@ -154,11 +156,12 @@ export async function readChatStream(res: Response): Promise<{ text: string; inp
     inputTokens: usage?.prompt_cache_miss_tokens ?? Math.max(0, (usage?.prompt_tokens ?? 0) - (usage?.prompt_cache_hit_tokens ?? 0)),
     outputTokens: usage?.completion_tokens ?? 0,
     cacheReadTokens: usage?.prompt_cache_hit_tokens ?? 0,
+    ...(finishReason ? { finishReason } : {}),
   }
 }
 
 /** Minimal chat-completions client for the DeepSeek API (OpenAI-compatible). */
-export async function deepseekChat(opts: DeepSeekApiOptions, system: string, prompt: string, signal?: AbortSignal): Promise<{ text: string; inputTokens: number; outputTokens: number; cacheReadTokens: number }> {
+export async function deepseekChat(opts: DeepSeekApiOptions, system: string, prompt: string, signal?: AbortSignal): Promise<{ text: string; inputTokens: number; outputTokens: number; cacheReadTokens: number; finishReason?: string }> {
   const base = (opts.baseUrl ?? 'https://api.deepseek.com').replace(/\/+$/, '')
   const ctl = new AbortController()
   const timer = setTimeout(() => ctl.abort(new Error('timeout')), opts.timeoutMs ?? 600_000)
