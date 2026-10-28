@@ -1,0 +1,15 @@
+# Example user overlay: use the harness2 bundle with sequential recursion and a
+# dedicated domain. Apply with:  dsh web --patch ./examples/profile.cordis.patch.yml
+- id: harness2
+  config:
+    improverProvider: deepseek-official
+    improverModel: deepseek-v4-pro
+    solverProvider: deepseek-official
+    solverModel: deepseek-flash
+    executor: workflow
+    subagentProvider: spawn
+    k: 2
+    maxK: 3
+    mode: sequential
+    autoActivate: true
+    defaultDomain: legal-contracts

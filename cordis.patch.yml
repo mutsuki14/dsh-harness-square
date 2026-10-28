@@ -1,0 +1,36 @@
+# dsh-harness2 bundle layer.
+#
+# Mounts Harness2 (recursive agent harnessing) over dsh-base:
+#   harness2          service: experience library, active harness per domain, improvement runs
+#   harness2-runtime  applies the active harness (system-prompt section, skill tool, loop policies)
+#   harness2-tools    harness2_improve / harness2_status / harness2_reset
+#
+# Override any row by id in your profile's cordis.patch.yml (a patch replaces a row's whole
+# `config`, so restate every key you need).
+
+- insert:
+    - id: harness2
+      name: dsh-harness2/service
+      config:
+        improverProvider: deepseek-official
+        improverModel: deepseek-v4-pro
+        solverProvider: deepseek-official
+        solverModel: deepseek-flash
+        executor: workflow
+        subagentProvider: spawn
+        k: 1
+        maxK: 3
+        mode: parallel
+        autoActivate: true
+        defaultDomain: general
+
+    - id: harness2-runtime
+      name: dsh-harness2/runtime
+      config:
+        sectionOrder: 50
+        enforcePolicies: true
+
+    - id: harness2-tools
+      name: dsh-harness2/tools
+      config:
+        enableImprove: true

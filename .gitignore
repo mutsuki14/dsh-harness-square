@@ -1,0 +1,7 @@
+node_modules/
+build/
+lib/
+lib-test/
+runs/
+*.log
+.env

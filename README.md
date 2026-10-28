@@ -1,1 +1,101 @@
-# dsh-harness-
+# dsh-harness2
+
+**Recursive agent harnessing for [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)**, ported from Google Research's [Harness²](https://github.com/google-research/harness2) (*Recursive Agent Harnessing for an Open World*). It ships as a DSH plugin bundle (`dsh.bundle`).
+
+A **harness** is everything around the model: the system prompt, guardrails, memory, tool guidance, skills, sub-agents, scripts and plugins. This bundle lets a DSH agent **improve its own harness**, with the model weights left unchanged:
+
+- **Task-level recursion (ProposeProbeCompose).** The task is rolled out k times under the current harness. The improver then proposes k procedure (INV) and k domain-knowledge (DOM) edits, *probes* each edit by running it, and *composes* refined harnesses from the behavioural contrasts. No ground-truth answers are needed. There are two modes:
+  - `parallel`: 2k independent candidates, then k compositions;
+  - `sequential`: k successive propose/probe/compose rounds.
+  
+  Either way the budget is exactly **R = 4k rollouts** and **P = 3k improver stages**, and the ledger asserts this.
+- **Blind selection.** The k finals are anonymised (seeded shuffle) and the selector picks one by looking only at the artifacts.
+- **Harnessing-level recursion.** A reflector writes per-edit verdicts plus at most one evidence-backed lesson. That lesson and the adopted harness go into a per-domain **experience library**, which the next task in the same domain reads (and warm-starts from).
+
+[中文说明](README.zh.md)
+
+## Architecture
+
+```
+src/core/            framework-agnostic method (no Cordis/DSH dependency)
+  tree.ts            8-component harness tree, surface rules, validation, diversity
+  policy.ts          declarative "plugin" component (JSON loop policies)
+  protocol.ts        improver reply protocol (<file>/<delete>/<keep_base/>/<notes>, choice, experience)
+  prompts.ts         INV / DOM / aggregate / compose / select / experience prompts (from harness2)
+  evidence.ts        bounded evidence document (task, sources, rollouts, candidate diffs, library)
+  recursion.ts       runParallel / runSequential, retry-once-then-inherit, ledger
+  selection.ts       blind selection + post-adoption reflection
+  library.ts         per-domain experience library (INDEX.md, adopted trees, EXPERIENCE.md)
+  pipeline.ts        Harness2: base rollouts -> recursion -> selection -> reflection -> library
+src/dsh/             DeepSeek Harness integration (Cordis plugins)
+  service.ts         ctx.harness2: library, active harness per domain, improvement runs, events
+  runtime.ts         applies the active harness to live agents
+  tools.ts           harness2_improve / harness2_status / harness2_reset
+  executors.ts       LlmExecutor (ctx.llm), WorkflowExecutor (ctx.workflowEngine child), HeadlessExecutor (dsh --profile headless --json)
+  improver.ts        LlmImprover (ctx.llm) and DeepSeekApiImprover (standalone)
+cordis.patch.yml     bundle layer mounting the three plugins
+```
+
+How each harness component maps onto DSH extension points (`harness2-runtime`):
+
+| harness component | DSH mechanism |
+|---|---|
+| `systemprompt.md`, `guardrails.md`, `memory.md`, `tool_guidance.md` | one dynamic `ctx.systemPrompt.section()` (always on) |
+| `skills/<n>/SKILL.md`, `sub_agents/<n>/AGENT.md` | the `harness2_skill` tool (loaded on demand) |
+| `scripts/<n>.{py,js,sh}` | materialised for the shell / headless workspaces |
+| `plugins/<n>.json` `pre` / `post` / `stop` rules | `tools/pre-execute` (deny/ask), `tools/post-execute` (reminder), `agent/turn-stopping` (`agent.steer`) |
+
+In harness2, plugins are TypeScript files. Here they are **declarative JSON policies** instead, so that model-written code never runs inside the Cordis process. They still act in the tool loop and are validated before they are activated.
+
+Probe executors, from cheapest to most faithful:
+
+- `llm`: a single `ctx.llm` completion;
+- `workflow`: a fresh DSH child agent started through `ctx.workflowEngine` from the calling agent;
+- `headless`: a real `dsh --profile headless --json` run. The harness is installed as `AGENTS.md` plus `.agents/skills/`.
+
+## Install into a DSH profile
+
+```sh
+git clone <this repo> dsh-harness2 && cd dsh-harness2 && npm install   # prepare builds lib/
+dsh plugin --profile demo add ./dsh-harness2
+dsh --profile demo --dump-config     # shows a "# == dsh-harness2" layer
+dsh --profile demo web
+```
+
+The bundle needs a model provider. The defaults use `deepseek-official` with `deepseek-v4-pro` as the improver and `deepseek-flash` as the solver; override these by row id (see `examples/profile.cordis.patch.yml`). Then ask the agent, for example: *"Use harness2_improve on this task with k=2 in domain legal-contracts: …"*. The adopted harness is activated for that domain straight away and takes effect on the agent's next step.
+
+### Service configuration (`harness2` row)
+
+| key | default | meaning |
+|---|---|---|
+| `improverProvider` / `improverModel` | `deepseek-official` / `deepseek-v4-pro` | propose / compose / select / reflect |
+| `solverProvider` / `solverModel` | `deepseek-official` / `deepseek-flash` | `llm` executor |
+| `executor` | `workflow` | `workflow` \| `llm` \| `headless` (`workflow` falls back to `llm` when there is no calling agent) |
+| `k`, `maxK`, `mode` | `1`, `3`, `parallel` | recursion budget, ceiling, mode |
+| `autoActivate`, `defaultDomain` | `true`, `general` | activate the adopted harness; default domain |
+| `root` | `$DSH_HOME/harness2` | library, active harnesses, runs, audit |
+
+Events: `harness2/progress` and `harness2/activated`.
+
+## Standalone use (no DSH process)
+
+```sh
+npm install
+node bin/harness2-dsh.js demo --k 2                     # deterministic, no API key
+DEEPSEEK_API_KEY=... node bin/harness2-dsh.js run --tasks examples/tasks.json --k 1 --mode parallel
+node bin/harness2-dsh.js run --tasks examples/tasks.json --executor headless   # probes via `dsh` CLI
+```
+
+Run artefacts are written to `runs/<task>/<mode>-k<k>/`: every harness tree, every rollout, `mode.json`, `selection.json` and `summary.json`. The library lives in `library/<domain>/`.
+
+## Development
+
+```sh
+npm run build && npm run typecheck && npm test
+```
+
+The tests cover the surface and validation rules, the reply protocol, the policy invariants, end-to-end runs in both modes at k=1 and k=2 (checking the budget identity, adoption and library warm start), and mounting the bundle on a real Cordis context (system-prompt section, skill tool, pre/post policy hooks, improvement and activation).
+
+## Credits and license
+
+The method, prompts and invariants are adapted from [google-research/harness2](https://github.com/google-research/harness2) (Apache-2.0). The integration targets [deepseek-ai/deepseek-harness](https://github.com/deepseek-ai/deepseek-harness) (MIT). This project is Apache-2.0. DSH's public APIs are still pre-stable, so this bundle types the services it uses structurally (`src/dsh/types.ts`).

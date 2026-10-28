@@ -1,0 +1,15 @@
+{
+  "work": {
+    "work": "An analyst receives a short business request with supporting tables and must produce a concise, correct written answer the requester can act on.",
+    "domainWord": "analysis area",
+    "deliverableWord": "memo"
+  },
+  "tasks": [
+    {
+      "id": "ledger/q3-net",
+      "domain": "accounting",
+      "prompt": "Compute the net total of every signed amount in ledger.csv and explain which entries are credits. Reply with 'Total: <value>' on the first line.",
+      "sources": { "ledger.csv": "amount\n100.25\n-20.10\n5.00\n" }
+    }
+  ]
+}
