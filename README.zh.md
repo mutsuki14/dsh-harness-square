@@ -45,4 +45,12 @@ node bin/harness2-dsh.js demo --k 2
 DEEPSEEK_API_KEY=... node bin/harness2-dsh.js run --tasks examples/tasks.json
 ```
 
+留出集评测（评分数据不会进入优化循环）：
+
+```sh
+node bin/harness2-dsh.js eval --tasks heldout.json --harness base --harness <adopted 目录> --repeats 3
+```
+
+实测（仅 deepseek-flash）：在 200 行多币种账本任务族上，base harness 两次均 11/12，从一个训练任务中采纳的 harness 同样 11/12。改进内容正确且可迁移，但没有提高准确率，因为 flash 在 base 下已有约 92% 的正确率，剩下的错误是偶发的几分钱算术误差。
+
 详细配置见 [README.md](README.md)。许可证：Apache-2.0。

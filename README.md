@@ -94,6 +94,16 @@ node bin/harness2-dsh.js run --tasks examples/tasks.json --executor headless   #
 
 Add `--price <in>,<out>` (USD per 1M tokens) to also report cost; token counts are always reported.
 
+### Held-out evaluation
+
+`eval` scores harnesses on tasks the improvement loop never saw, with a deterministic checker kept outside the method:
+
+```sh
+node bin/harness2-dsh.js eval --tasks heldout.json --harness base --harness runs/runs/<task>/parallel-k1/adopted --repeats 3
+```
+
+Each task carries `"expect": {"pattern": "^Total: 1724\\.50$"}` (a multiline regex). `run` strips `expect` before tasks enter the loop, so grading data never reaches the improver. Results go to `<out>/eval.json`. In the toolless (`llm`) executor, transport failures are retried; empty or cut-off answers count as failures and record `finish_reason`.
+
 Run artefacts are written to `runs/<task>/<mode>-k<k>/`: every harness tree, every rollout, `mode.json`, `selection.json` and `summary.json`. The library lives in `library/<domain>/`.
 
 ## Verified against real DeepSeek Harness
@@ -109,13 +119,23 @@ End-to-end in a sandbox with `@deepseek-ai/dsh@0.2.1-rc.4` and `deepseek-flash` 
 | agent calls `harness2_improve` (headless) | 4 isolated probes, each with its own `.git` and seeded input; caller workspace untouched |
 | agent calls `harness2_improve` (workflow) | probes stayed in `.harness2-probes/<runId>/`; caller workspace untouched |
 | parallel k=2 and sequential k=2 (CLI) | R=4k / P=3k; non-trivial blind selection; a 2-task stream warm-started task 2 from task 1's adopted harness (identical tree) |
+| agent calls `harness2_improve` k=2 (headless) | R=8 / P=6, 8 isolated probes, blind selection adopted `agg2`, library updated; usage recorded for every stage |
 | token / cost | usage incl. cache reads observed from API and dsh `step_end`; cost recomputed independently and matched |
+| held-out eval (toolless, flash) | 200-row multi-currency ledger family (duplicates by `seq`, reversals by `ref`, half-even rounding per line). Base harness 11/12 and 11/12 across two runs; the harness adopted from one training task also scored 11/12 (4 held-out tasks × 3 repeats) |
+
+On the held-out ledger family the adopted harness was correct and transferred (a domain skill with the rule
+order, a per-line rounding procedure and a removed-row audit), but it did **not** raise accuracy: `deepseek-flash`
+already solves ~92% without it, and the remaining misses are occasional arithmetic slips of a few cents.
+Easier families (30 and 120 rows) were solved 100% by the base harness. Showing a measured gain will need a
+task family where the base harness fails systematically, not by chance.
 
 Bugs these runs found and fixed: tool-call markup counted as a deliverable; probe limitation written into the
 harness; snake_case skills ignored by dsh; YAML-invalid skill frontmatter ignored by dsh; headless workspaces
 reading the outer repo; shared-cwd contamination between workflow probes and writes into the caller's
 workspace; skill triggers naming the wrong tool; candidate policies not enforced in headless probes; reports
-lost when a workflow child's structured output failed; cache tokens missing from cost.
+lost when a workflow child's structured output failed; cache tokens missing from cost; long non-streaming
+API calls cut mid-generation (`terminated`), which polluted eval results as wrong answers. The client now
+streams.
 
 ## Development
 
