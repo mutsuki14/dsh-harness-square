@@ -13,7 +13,7 @@ import { clip } from './evidence.ts'
 import { parseChoice, parseExperience, renderTreeDiff, type Experience } from './protocol.ts'
 import * as P from './prompts.ts'
 import type { ModeResult } from './recursion.ts'
-import type { Improver, Rollout, TaskSpec, WorkPrompts } from './spec.ts'
+import { addUsage, ZERO_USAGE, type Improver, type Rollout, type TaskSpec, type TokenUsage, type WorkPrompts } from './spec.ts'
 import type { HarnessTree } from './tree.ts'
 
 export interface Selection {
@@ -30,6 +30,8 @@ export interface Selection {
   dropped: string[]
   error: string
   usd: number
+  /** Tokens spent by the selector and reflector calls. */
+  usage: TokenUsage
   experience?: Experience
   edits?: string
 }
@@ -70,7 +72,7 @@ export function assignIds(labels: string[], seed: string): Record<string, string
 }
 
 function emptySelection(task: TaskSpec, mode: string, k: number): Selection {
-  return { taskId: task.id, mode, k, ok: false, trivial: false, fellBack: false, chosenId: '', chosenLabel: '', idMap: {}, why: '', dropped: [], error: '', usd: 0 }
+  return { taskId: task.id, mode, k, ok: false, trivial: false, fellBack: false, chosenId: '', chosenLabel: '', idMap: {}, why: '', dropped: [], error: '', usd: 0, usage: { ...ZERO_USAGE } }
 }
 
 function deliverablePool(result: ModeResult, sel: Selection): Record<string, Rollout> {
@@ -133,6 +135,7 @@ export async function runSelection(opts: SelectOptions): Promise<Selection> {
     if (opts.signal) req.signal = opts.signal
     const reply = await opts.improver.call(req)
     sel.usd += reply.costUsd ?? 0
+    sel.usage = addUsage(sel.usage, reply)
     const { choice, why } = parseChoice(reply.text)
     if (!choice) throw new Error('no ```choice block in the reply')
     if (!(choice in sel.idMap)) throw new Error(`chose ${JSON.stringify(choice)}, which is not one of ${ids.join(', ')}`)
@@ -187,6 +190,7 @@ export async function reflectAdoption(opts: ReflectOptions): Promise<Experience 
     if (opts.signal) req.signal = opts.signal
     const reply = await opts.improver.call(req)
     sel.usd += reply.costUsd ?? 0
+    sel.usage = addUsage(sel.usage, reply)
     const { experience, edits } = parseExperience(reply.text)
     if (edits) sel.edits = edits
     if (experience) sel.experience = experience

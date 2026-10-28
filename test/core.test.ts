@@ -65,6 +65,41 @@ test('toolless executor puts the runtime-limits note in every improvement missio
   const h2 = new Harness2({ executor: exec, improver: spy, work: { work: 'reconcile signed ledgers' }, baseTree: DEMO_BASE, k: 1, reflect: false })
   await h2.runTask(DEMO_TASKS[0]!)
   const stageMissions = seen.filter(m => m.includes('# HOW TO REPLY'))
-  assert.equal(stageMissions.length, 3)
+  assert.ok(stageMissions.length >= 3, `expected >=3 stage missions, got ${stageMissions.length}`)
   assert.ok(stageMissions.every(m => m.includes(TOOLLESS_NOTE)))
+})
+
+test('toolless probe guard: rejects probe-limitation leaks and script edits, keeps prose edits', async () => {
+  const { checkToollessProbe } = await import('../src/core/recursion.ts')
+  const base = { 'systemprompt.md': 'Work it.', 'scripts/a.py': 'print(1)\n' }
+  assert.match(checkToollessProbe(DEFAULT_SURFACE, { ...base, 'systemprompt.md': 'No tools are available: compute in your reply.' }, base).join(), /limitation of this evaluation probe/)
+  assert.match(checkToollessProbe(DEFAULT_SURFACE, { ...base, 'scripts/a.py': 'print(2)\n' }, base).join(), /no tool loop/)
+  assert.deepEqual(checkToollessProbe(DEFAULT_SURFACE, { ...base, 'memory.md': 'Amounts in parentheses are negative.' }, base), [])
+})
+
+test('ledger and task result account tokens; cost only when priced', async () => {
+  const { costOf } = await import('../src/core/spec.ts')
+  assert.equal(costOf({ inputTokens: 1_000_000, outputTokens: 500_000 }, { input: 0.2, output: 0.8 }), 0.6)
+  assert.equal(costOf({ inputTokens: 10, outputTokens: 10 }, undefined), undefined)
+  const imp = new DemoImprover()
+  const metered = { name: 'm', call: async (req: any) => ({ ...(await imp.call(req)), inputTokens: 100, outputTokens: 10 }) }
+  const exec = new DemoExecutor()
+  const metExec = { name: 'me', execute: async (t: any, h: any) => ({ ...(await exec.execute(t, h)), usage: { inputTokens: 50, outputTokens: 5 } }) }
+  const r = await new Harness2({ executor: metExec, improver: metered, work: { work: 'reconcile signed ledgers' }, baseTree: DEMO_BASE, k: 1 }).runTask(DEMO_TASKS[0]!)
+  // 4 rollouts x (50,5) + 3 stages x (100,10) + selection(trivial, 0) + reflection (100,10)
+  assert.deepEqual(r.usage, { inputTokens: 4 * 50 + 3 * 100 + 100, outputTokens: 4 * 5 + 3 * 10 + 10 })
+  assert.deepEqual(r.usageUnknown, [])
+})
+
+test('a rejected attempt records its reason even when the retry succeeds', async () => {
+  const { runStage } = await import('../src/core/recursion.ts')
+  let n = 0
+  const improver = { name: 'r', call: async () => ({ text: ++n === 1
+    ? '<file path="systemprompt.md">\nNo tools are available.\n</file><notes>a</notes>'
+    : '<file path="systemprompt.md">\nCompute row by row in your reply.\n</file><notes>b</notes>' }) }
+  const ctx: any = { task: DEMO_TASKS[0], work: { work: 'reconcile signed ledgers' }, k: 1, base: [], baseTree: DEMO_BASE, surface: DEFAULT_SURFACE,
+    executor: { name: 'x', toolless: true, execute: async () => ({}) }, improver, runIdOf: (l: string) => l }
+  const s = await runStage(ctx, { label: 'inv1', dim: 'INV', job: 'job', fallback: DEMO_BASE, fallbackLabel: 'base' })
+  assert.equal(s.fellBack, false); assert.equal(s.attempts, 2)
+  assert.match(s.rejections?.[0] ?? '', /limitation of this evaluation probe/)
 })

@@ -14,7 +14,7 @@
 import { spawn } from 'node:child_process'
 import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import type { Executor, Rollout, TaskSpec } from '../core/spec.ts'
+import { addUsage, costOf, ZERO_USAGE, type Executor, type Price, type Rollout, type TaskSpec, type TokenUsage } from '../core/spec.ts'
 import { DEFAULT_SURFACE, writeTree, type HarnessTree, type SurfaceSpec } from '../core/tree.ts'
 import { streamText } from './improver.ts'
 import { renderHarnessPrompt } from './render.ts'
@@ -31,11 +31,15 @@ export function isUnexecutedToolCall(text: string): boolean {
 }
 
 /** Shape a toolless completion into a rollout, never counting dead tool-call markup as a deliverable. */
-export function toollessRollout(text: string, trajectory: string, wallMs: number): ExecResult {
+export function toollessRollout(text: string, trajectory: string, wallMs: number, usage?: TokenUsage, price?: Price): ExecResult {
+  const metered: Partial<ExecResult> = {}
+  if (usage) metered.usage = usage
+  const cost = costOf(usage, price)
+  if (cost !== undefined) metered.costUsd = cost
   if (isUnexecutedToolCall(text)) {
-    return { ok: true, delivered: false, deliverable: '', trajectory: `${trajectory}\n[RUNTIME] the solver emitted a tool call, but this executor has no tool loop; nothing was delivered`, wallMs, error: 'unexecuted tool call (toolless executor)' }
+    return { ok: true, delivered: false, deliverable: '', trajectory: `${trajectory}\n[RUNTIME] the solver emitted a tool call, but this executor has no tool loop; nothing was delivered`, wallMs, error: 'unexecuted tool call (toolless executor)', ...metered }
   }
-  return { ok: true, delivered: text.trim().length > 0, deliverable: text, trajectory, wallMs }
+  return { ok: true, delivered: text.trim().length > 0, deliverable: text, trajectory, wallMs, ...metered }
 }
 
 function taskMessage(task: TaskSpec): string {
@@ -54,6 +58,8 @@ export interface LlmExecutorOptions {
   temperature?: number
   maxTokens?: number
   surface?: SurfaceSpec
+  /** USD per million tokens for the solver model, to turn usage into cost. */
+  price?: Price
 }
 
 /** Single completion: the cheapest probe; it sees the harness but has no tool loop. */
@@ -77,7 +83,7 @@ export class LlmExecutor implements Executor {
       if (this.opts.maxTokens !== undefined) args.maxTokens = this.opts.maxTokens
       if (signal) args.signal = signal
       const r = await streamText(this.llm, args)
-      return toollessRollout(r.text, `[SYSTEM] harness rendered (${system.length} chars)\n[USER] ${task.prompt.slice(0, 500)}\n[ASSISTANT]\n${r.text}`, Date.now() - started)
+      return toollessRollout(r.text, `[SYSTEM] harness rendered (${system.length} chars)\n[USER] ${task.prompt.slice(0, 500)}\n[ASSISTANT]\n${r.text}`, Date.now() - started, { inputTokens: r.inputTokens, outputTokens: r.outputTokens }, this.opts.price)
     } catch (e) {
       return { ok: false, delivered: false, deliverable: '', trajectory: '', error: (e as Error).message, wallMs: Date.now() - started }
     }
@@ -189,6 +195,8 @@ export interface HeadlessExecutorOptions {
   surface?: SurfaceSpec
   /** Keep workspaces after the run (default true, for audit). */
   keep?: boolean
+  /** USD per million tokens for the agent model, to turn usage into cost. */
+  price?: Price
 }
 
 export interface HeadlessEvent {
@@ -197,10 +205,12 @@ export interface HeadlessEvent {
 }
 
 /** Convert `dsh headless --json` events into a trajectory and final text. */
-export function foldHeadlessEvents(lines: string[]): { trajectory: string; final: string; sessionId?: string; error?: string } {
+export function foldHeadlessEvents(lines: string[]): { trajectory: string; final: string; sessionId?: string; error?: string; usage?: TokenUsage } {
   const out: string[] = []
   let final = ''
   let error: string | undefined
+  let usage: TokenUsage | undefined
+  let usageComplete = true
   let sessionId: string | undefined
   for (const line of lines) {
     let ev: HeadlessEvent
@@ -225,6 +235,14 @@ export function foldHeadlessEvents(lines: string[]): { trajectory: string; final
       case 'final':
         final = String(ev['text'] ?? '')
         break
+      case 'status':
+        if (ev['phase'] === 'step_end') {
+          const u = ev['usage'] as Partial<TokenUsage> | undefined
+          // dsh omits usage for a step when any attempt failed to report it: the total is then unknowable.
+          if (u && typeof u.inputTokens === 'number') usage = addUsage(usage ?? { ...ZERO_USAGE }, u)
+          else usageComplete = false
+        }
+        break
       case 'error':
         error = String(ev['message'] ?? 'unknown error')
         out.push(`[ERROR] ${error}`)
@@ -233,9 +251,10 @@ export function foldHeadlessEvents(lines: string[]): { trajectory: string; final
         break
     }
   }
-  const r: { trajectory: string; final: string; sessionId?: string; error?: string } = { trajectory: out.join('\n'), final }
+  const r: { trajectory: string; final: string; sessionId?: string; error?: string; usage?: TokenUsage } = { trajectory: out.join('\n'), final }
   if (sessionId) r.sessionId = sessionId
   if (error) r.error = error
+  if (usage && usageComplete) r.usage = usage
   return r
 }
 
@@ -325,6 +344,11 @@ export class HeadlessExecutor implements Executor {
       trajectory: folded.trajectory,
       wallMs: Date.now() - started,
       ref: folded.sessionId ?? ws,
+    }
+    if (folded.usage) {
+      res.usage = folded.usage
+      const cost = costOf(folded.usage, this.opts.price)
+      if (cost !== undefined) res.costUsd = cost
     }
     if (code !== 0) res.error = `dsh exited ${code}: ${folded.error ?? stderr.trim().slice(-600)}`
     return res

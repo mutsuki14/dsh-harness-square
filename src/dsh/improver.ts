@@ -9,7 +9,7 @@
  * Both retry transport failures (harness2 `TRANSPORT_ATTEMPTS`) and never retry a model reply.
  */
 
-import { ImproverError, type Improver, type ImproverReply, type ImproverRequest } from '../core/spec.ts'
+import { costOf, ImproverError, type Improver, type ImproverReply, type ImproverRequest, type Price } from '../core/spec.ts'
 import type { LlmService } from './types.ts'
 
 export interface LlmImproverOptions {
@@ -19,6 +19,8 @@ export interface LlmImproverOptions {
   maxTokens?: number
   /** Transport attempts per call (default 3). */
   attempts?: number
+  /** USD per million tokens, to turn usage into cost. */
+  price?: Price
   /** Optional audit sink: every request/response pair. */
   audit?: (entry: { label: string; mission: string; text: string; error?: string }) => void
 }
@@ -88,7 +90,10 @@ export class LlmImprover implements Improver {
         const r = await streamText(this.llm, args)
         if (!r.text.trim()) throw new ImproverError('empty reply')
         this.opts.audit?.({ label: req.label, mission: req.mission, text: r.text })
-        return { text: r.text, inputTokens: r.inputTokens, outputTokens: r.outputTokens }
+        const reply: ImproverReply = { text: r.text, inputTokens: r.inputTokens, outputTokens: r.outputTokens }
+        const cost = costOf(r, this.opts.price)
+        if (cost !== undefined) reply.costUsd = cost
+        return reply
       } catch (e) {
         last = e as Error
         if (req.signal?.aborted) break
@@ -108,6 +113,7 @@ export interface DeepSeekApiOptions {
   maxTokens?: number
   attempts?: number
   timeoutMs?: number
+  price?: Price
 }
 
 /** Minimal chat-completions client for the DeepSeek API (OpenAI-compatible). */
@@ -163,7 +169,10 @@ export class DeepSeekApiImprover implements Improver {
       try {
         const r = await deepseekChat(this.opts, req.system, req.mission, req.signal)
         if (!r.text.trim()) throw new ImproverError('empty reply')
-        return r
+        const reply: ImproverReply = { ...r }
+        const cost = costOf(r, this.opts.price)
+        if (cost !== undefined) reply.costUsd = cost
+        return reply
       } catch (e) {
         last = e as Error
         if (req.signal?.aborted) break

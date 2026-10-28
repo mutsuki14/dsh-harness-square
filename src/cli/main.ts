@@ -28,6 +28,7 @@ const { positionals, values } = parseArgs({
     executor: { type: 'string', default: 'llm' },
     model: { type: 'string', default: process.env['HARNESS2_IMPROVER_MODEL'] ?? 'deepseek-v4-pro' },
     'solver-model': { type: 'string', default: process.env['HARNESS2_SOLVER_MODEL'] ?? 'deepseek-flash' },
+    price: { type: 'string', default: process.env['HARNESS2_PRICE'] ?? '' },
     help: { type: 'boolean', short: 'h' },
   },
 })
@@ -35,6 +36,13 @@ const { positionals, values } = parseArgs({
 const cmd = positionals[0]
 const k = Number(values.k)
 const mode = values.mode as Mode
+/** `--price in,out` (USD per 1M tokens) applies to every model call; omit to report tokens only. */
+const price = (() => {
+  if (!values.price) return undefined
+  const [i, o] = values.price.split(',').map(Number)
+  if (!Number.isFinite(i) || !Number.isFinite(o)) throw new Error('--price expects "<input>,<output>" USD per 1M tokens')
+  return { input: i as number, output: o as number }
+})()
 const log = (e: { type: string; label?: string; message?: string }) => console.error(`  ${e.type}${e.label ? ` ${e.label}` : ''}${e.message ? ` ${e.message}` : ''}`)
 
 if (!cmd || values.help) {
@@ -57,11 +65,11 @@ if (cmd === 'demo') {
   const spec = JSON.parse(readFileSync(values.tasks, 'utf8')) as { work?: WorkPrompts; tasks: TaskSpec[] }
   const apiKey = process.env['DEEPSEEK_API_KEY'] ?? ''
   const baseUrl = process.env['DEEPSEEK_BASE_URL']
-  const improver = new DeepSeekApiImprover({ apiKey, model: values.model, ...(baseUrl ? { baseUrl } : {}) })
+  const improver = new DeepSeekApiImprover({ apiKey, model: values.model, ...(baseUrl ? { baseUrl } : {}), ...(price ? { price } : {}) })
   const out = resolve(values.out ?? 'runs')
   const executor: Executor =
     values.executor === 'headless'
-      ? new HeadlessExecutor({ workRoot: join(out, 'workspaces'), command: process.env['DSH_COMMAND'] ?? 'dsh' })
+      ? new HeadlessExecutor({ workRoot: join(out, 'workspaces'), command: process.env['DSH_COMMAND'] ?? 'dsh', ...(price ? { price } : {}) })
       : {
           name: 'deepseek-api',
           toolless: true,
@@ -69,14 +77,17 @@ if (cmd === 'demo') {
             const started = Date.now()
             try {
               const r = await deepseekChat({ apiKey, model: values['solver-model'], ...(baseUrl ? { baseUrl } : {}) }, renderHarnessPrompt(harness), task.prompt + Object.entries(task.sources ?? {}).map(([n, b]) => `\n<source name="${n}">\n${b}\n</source>`).join(''))
-              return toollessRollout(r.text, `[ASSISTANT]\n${r.text}`, Date.now() - started)
+              return toollessRollout(r.text, `[ASSISTANT]\n${r.text}`, Date.now() - started, { inputTokens: r.inputTokens, outputTokens: r.outputTokens }, price)
             } catch (e) {
               return { ok: false, delivered: false, deliverable: '', trajectory: '', error: (e as Error).message }
             }
           },
         }
   const h2 = new Harness2({ executor, improver, work: spec.work ?? DEFAULT_WORK, baseTree: DEFAULT_BASE_TREE, k, mode, runsDir: join(out, 'runs'), libraryDir: join(out, 'library'), onProgress: log })
-  for (const r of await h2.runStream(spec.tasks)) console.log(`${r.taskId}: adopted=${r.selection.chosenLabel} library=${r.libraryUpdated} usd=${r.usd}`)
+  for (const r of await h2.runStream(spec.tasks)) {
+    const cost = price ? ` usd=${r.usd.toFixed(4)}` : ''
+    console.log(`${r.taskId}: adopted=${r.selection.chosenLabel} library=${r.libraryUpdated} tokens_in=${r.usage.inputTokens} tokens_out=${r.usage.outputTokens}${cost}${r.usageUnknown.length ? ` usage_unknown=${r.usageUnknown.join(',')}` : ''}`)
+  }
 } else {
   console.error(`unknown command ${cmd}`)
   process.exit(1)

@@ -16,7 +16,7 @@ import type { EvidenceLimits } from './evidence.ts'
 import { ExperienceLibrary, slug } from './library.ts'
 import { mapLimit, roll, runMode, summarizeMode, type Mode, type ModeResult, type RecursionContext } from './recursion.ts'
 import { reflectAdoption, runSelection, type Selection } from './selection.ts'
-import { checkWorkPrompts, type Executor, type Improver, type ProgressSink, type Rollout, type TaskSpec, type WorkPrompts } from './spec.ts'
+import { addUsage, checkWorkPrompts, type TokenUsage, type Executor, type Improver, type ProgressSink, type Rollout, type TaskSpec, type WorkPrompts } from './spec.ts'
 import { DEFAULT_SURFACE, writeTree, type HarnessTree, type SurfaceSpec } from './tree.ts'
 
 export interface Harness2Options {
@@ -56,6 +56,10 @@ export interface TaskResult {
   adoptedRollout?: Rollout
   libraryUpdated: boolean
   usd: number
+  /** All tokens observed: rollouts + improvement stages + selection/reflection. */
+  usage: TokenUsage
+  /** Ledger labels whose usage the executor could not observe. */
+  usageUnknown: string[]
 }
 
 export class Harness2 {
@@ -139,6 +143,8 @@ export class Harness2 {
     }
 
     const usd = Math.round((modeResult.ledger.usd + selection.usd) * 1e6) / 1e6
+    const usage = addUsage(modeResult.ledger.tokens, selection.usage)
+    const usageUnknown = modeResult.ledger.usageUnknown
     const out: TaskResult = {
       taskId: task.id,
       domain: task.domain,
@@ -150,6 +156,8 @@ export class Harness2 {
       adoptedTree,
       libraryUpdated,
       usd,
+      usage,
+      usageUnknown,
     }
     const adoptedRollout = selection.ok ? modeResult.rollouts[selection.chosenLabel] : undefined
     if (adoptedRollout) out.adoptedRollout = adoptedRollout
@@ -174,6 +182,8 @@ export class Harness2 {
         selectionOk: selection.ok,
         libraryUpdated,
         usd,
+        usage,
+        usageUnknown,
         R: modeResult.ledger.R,
         P: modeResult.ledger.P,
       })

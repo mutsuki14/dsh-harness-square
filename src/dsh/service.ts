@@ -19,7 +19,7 @@ import { join } from 'node:path'
 import { ExperienceLibrary, domainDir } from '../core/library.ts'
 import { Harness2, type TaskResult } from '../core/pipeline.ts'
 import type { Mode } from '../core/recursion.ts'
-import type { Executor, Improver, ProgressEvent, TaskSpec, WorkPrompts } from '../core/spec.ts'
+import { normalizePrice, type Executor, type Improver, type Price, type ProgressEvent, type TaskSpec, type WorkPrompts } from '../core/spec.ts'
 import { DEFAULT_SURFACE, readTree, surfaceWith, validate, writeTree, type HarnessTree, type SurfaceSpec } from '../core/tree.ts'
 import { DEFAULT_BASE_TREE, DEFAULT_WORK } from './defaults.ts'
 import { LlmExecutor, WorkflowExecutor, HeadlessExecutor } from './executors.ts'
@@ -69,6 +69,9 @@ export interface Config {
   allowSubagents: boolean
   /** Default domain for agents that never selected one. */
   defaultDomain: string
+  /** Optional USD-per-million-token prices; without them runs report tokens only. */
+  improverPrice?: Price
+  solverPrice?: Price
 }
 
 export const Config: Schema<Config> = Schema.object({
@@ -89,6 +92,8 @@ export const Config: Schema<Config> = Schema.object({
   warmStart: Schema.boolean().default(true),
   allowSubagents: Schema.boolean().default(true),
   defaultDomain: Schema.string().default('general'),
+  improverPrice: Schema.object({ input: Schema.number().min(0), output: Schema.number().min(0) }).description('USD per 1M tokens for the improver model.'),
+  solverPrice: Schema.object({ input: Schema.number().min(0), output: Schema.number().min(0) }).description('USD per 1M tokens for the solver model.'),
 }) as Schema<Config>
 
 export interface ImproveRequest {
@@ -132,7 +137,13 @@ export class Harness2Service extends Service {
 
   constructor(ctx: Context, config: Config) {
     super(ctx, 'harness2')
-    this.config = config
+    const improverPrice = normalizePrice(config.improverPrice)
+    const solverPrice = normalizePrice(config.solverPrice)
+    this.config = { ...config }
+    delete this.config.improverPrice
+    delete this.config.solverPrice
+    if (improverPrice) this.config.improverPrice = improverPrice
+    if (solverPrice) this.config.solverPrice = solverPrice
     this.surface = surfaceWith({ alwaysOnMax: config.alwaysOnMax })
     this.root = config.root || join(process.env['DSH_HOME'] || join(homedir(), '.dsh'), 'harness2')
     mkdirSync(this.root, { recursive: true })
@@ -195,12 +206,15 @@ export class Harness2Service extends Service {
     }
     if (kind === 'headless') {
       const opts: ConstructorParameters<typeof HeadlessExecutor>[0] = { command: this.config.headlessCommand, workRoot: join(this.root, 'workspaces'), surface: this.surface }
+      if (this.config.solverPrice) opts.price = this.config.solverPrice
       if (req.seedDir) opts.seedDir = req.seedDir
       return new HeadlessExecutor(opts)
     }
     const llm = optionalService<LlmService>(this.ctx, 'llm')
     if (!llm) throw new Error('harness2: no executor available -- mount @deepseek-ai/dsh-llm (and a provider adapter) or pass executorImpl')
-    return new LlmExecutor(llm, { provider: this.config.solverProvider, model: this.config.solverModel, surface: this.surface })
+    const opts: ConstructorParameters<typeof LlmExecutor>[1] = { provider: this.config.solverProvider, model: this.config.solverModel, surface: this.surface }
+    if (this.config.solverPrice) opts.price = this.config.solverPrice
+    return new LlmExecutor(llm, opts)
   }
 
   resolveImprover(req: ImproveRequest): Improver {
@@ -211,6 +225,7 @@ export class Harness2Service extends Service {
     return new LlmImprover(llm, {
       provider: this.config.improverProvider,
       model: this.config.improverModel,
+      ...(this.config.improverPrice ? { price: this.config.improverPrice } : {}),
       audit: entry => {
         try {
           mkdirSync(auditDir, { recursive: true })
@@ -255,7 +270,7 @@ export class Harness2Service extends Service {
         status: 'done',
         endedAt: new Date().toISOString(),
         adopted: result.selection.chosenLabel,
-        summary: { k, mode: result.mode, adopted: result.selection.chosenLabel, why: result.selection.why, libraryUpdated: result.libraryUpdated, R: result.modeResult.ledger.R, P: result.modeResult.ledger.P },
+        summary: { k, mode: result.mode, adopted: result.selection.chosenLabel, why: result.selection.why, libraryUpdated: result.libraryUpdated, R: result.modeResult.ledger.R, P: result.modeResult.ledger.P, usage: result.usage, usd: result.usd, usageUnknown: result.usageUnknown },
       })
       return result
     } catch (e) {

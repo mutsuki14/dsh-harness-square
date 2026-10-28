@@ -56,3 +56,21 @@ test('toolless executors never count unexecuted tool-call markup as delivered', 
   assert.equal(r.delivered, false)
   assert.equal(toollessRollout('Total: 1.00', '', 1).delivered, true)
 })
+
+test('headless step usage is summed, and dropped when any step lacked it', () => {
+  const ok = foldHeadlessEvents(['{"type":"status","phase":"step_end","usage":{"inputTokens":10,"outputTokens":2}}', '{"type":"status","phase":"step_end","usage":{"inputTokens":5,"outputTokens":1}}'])
+  assert.deepEqual(ok.usage, { inputTokens: 15, outputTokens: 3 })
+  const partial = foldHeadlessEvents(['{"type":"status","phase":"step_end","usage":{"inputTokens":10,"outputTokens":2}}', '{"type":"status","phase":"step_end"}'])
+  assert.equal(partial.usage, undefined)
+})
+
+test('service config: loads with no price (regression) and normalises a partial price away', async () => {
+  for (const extra of [{}, { solverPrice: {} }, { solverPrice: { input: 0.1, output: 0.4 } }]) {
+    const root = new Context()
+    root.plugin(Harness2Service, { root: mkdtempSync(join(tmpdir(), 'h2p-')), ...extra } as any)
+    await tick()
+    const svc = (root as any).get('harness2')
+    assert.ok(svc, `service failed to load with ${JSON.stringify(extra)}`)
+    assert.deepEqual(svc.config.solverPrice, (extra as any).solverPrice?.input !== undefined ? { input: 0.1, output: 0.4 } : undefined)
+  }
+})

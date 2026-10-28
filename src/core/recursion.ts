@@ -13,8 +13,8 @@ import { buildEvidence, type EvidenceLimits, type PoolEntry } from './evidence.t
 import { Ledger } from './ledger.ts'
 import { applyEdits, parseEdits } from './protocol.ts'
 import * as P from './prompts.ts'
-import type { Executor, Improver, ProgressSink, Rollout, TaskSpec, WorkPrompts } from './spec.ts'
-import { autotrigger, diversity, isUnchanged, validate, type HarnessTree, type SurfaceSpec } from './tree.ts'
+import { addUsage, ZERO_USAGE, type Executor, type Improver, type ProgressSink, type Rollout, type TaskSpec, type TokenUsage, type WorkPrompts } from './spec.ts'
+import { autotrigger, diversity, isUnchanged, scriptPaths, validate, type HarnessTree, type SurfaceSpec } from './tree.ts'
 
 export const STAGE_ATTEMPTS = 2
 
@@ -42,6 +42,9 @@ export interface Stage {
   usd: number
   attempts: number
   notes: string
+  usage?: TokenUsage
+  /** Why each rejected attempt was rejected (validator / guard / protocol), in order. */
+  rejections?: string[]
 }
 
 export interface ModeResult {
@@ -79,6 +82,30 @@ export interface RecursionContext {
   validateTree?: (tree: HarnessTree) => void
 }
 
+/** Phrases that state the PROBE's limitation as if it were a property of every future run. */
+const PROBE_LEAK = /\bno tools? (?:are|is) (?:available|provided)\b|\bwithout (?:any )?(?:tools|tool access)\b|\b(?:never|do not|don't) (?:answer|reply|respond) with a tool call\b|\b(?:cannot|can't|can not) (?:use|call|run) (?:any )?tools\b|\btools? (?:are|is) (?:not|un)available\b/i
+
+/**
+ * Deterministic checks for a toolless probe: such a probe can only produce evidence about prose.
+ * 1. No component may state the probe's limitation -- the adopted harness later runs for agents WITH tools.
+ * 2. No script may be added or changed -- no rollout of this probe can execute it, so no evidence can support it.
+ */
+export function checkToollessProbe(surface: SurfaceSpec, next: HarnessTree, fallback: HarnessTree): string[] {
+  const errs: string[] = []
+  for (const [rel, text] of Object.entries(next)) {
+    const m = PROBE_LEAK.exec(text)
+    if (m && !PROBE_LEAK.test(fallback[rel] ?? '')) {
+      errs.push(`${rel}: says "${m[0]}" -- that is a limitation of this evaluation probe, not of the agents this harness will run for (they have tools). Remove it; keep any in-reply procedure without claiming tools are absent.`)
+    }
+  }
+  for (const rel of scriptPaths(surface, next)) {
+    if (next[rel] !== fallback[rel]) {
+      errs.push(`${rel}: this probe has no tool loop, so no rollout can execute or support a script edit. Drop the script and encode the procedure as prose or a skill.`)
+    }
+  }
+  return errs
+}
+
 /** Run `fn` over items with at most `width` in flight, preserving order. */
 export async function mapLimit<T, R>(items: readonly T[], width: number, fn: (item: T, i: number) => Promise<R>): Promise<R[]> {
   const out: R[] = new Array(items.length)
@@ -103,6 +130,10 @@ function acceptTree(ctx: RecursionContext, next: HarnessTree, fallback: HarnessT
     const opts: { allowSubagents?: boolean } = {}
     if (ctx.allowSubagents !== undefined) opts.allowSubagents = ctx.allowSubagents
     validate(ctx.surface, next, opts)
+    if (ctx.executor.toolless) {
+      const probeErrs = checkToollessProbe(ctx.surface, next, fallback)
+      if (probeErrs.length) throw new Error(probeErrs.join('\n'))
+    }
     ctx.validateTree?.(next)
   } catch (e) {
     return { kept, error: (e as Error).message }
@@ -123,7 +154,11 @@ interface StageSpec {
 /** Build evidence, propose an edit, and retry an invalid proposal once. */
 export async function runStage(ctx: RecursionContext, spec: StageSpec): Promise<Stage> {
   ctx.onProgress?.({ type: 'stage/start', taskId: ctx.task.id, label: spec.label, dim: spec.dim })
+  let usage: TokenUsage = { ...ZERO_USAGE }
+  const rejections: string[] = []
   const finish = (s: Stage): Stage => {
+    s.usage = usage
+    if (rejections.length) s.rejections = rejections
     const ev: Parameters<ProgressSink>[0] = { type: 'stage/end', taskId: ctx.task.id, label: s.label, dim: s.dim, keptBase: s.keptBase, fellBack: s.fellBack }
     if (s.error) (ev as { error?: string }).error = s.error
     ctx.onProgress?.(ev)
@@ -150,6 +185,7 @@ export async function runStage(ctx: RecursionContext, spec: StageSpec): Promise<
   let attempts = 0
   let working: HarnessTree = spec.fallback
   for (let attempt = 1; attempt <= STAGE_ATTEMPTS; attempt++) {
+    if (err) rejections.push(err.slice(0, 600))
     if (ctx.signal?.aborted) {
       err = 'aborted'
       break
@@ -168,6 +204,7 @@ export async function runStage(ctx: RecursionContext, spec: StageSpec): Promise<
       if (ctx.signal) req.signal = ctx.signal
       const reply = await ctx.improver.call(req)
       usd += reply.costUsd ?? 0
+      usage = addUsage(usage, reply)
       text = reply.text
     } catch (e) {
       err = `improver call failed: ${(e as Error).message}`
@@ -220,7 +257,7 @@ async function rollMany(ctx: RecursionContext, ledger: Ledger, items: [string, H
   const out: Record<string, Rollout> = {}
   // Record after the pool drains so a concurrent run records the same sequence as a serial one.
   items.forEach(([label], i) => {
-    ledger.rollout(label, got[i]?.costUsd ?? 0)
+    ledger.rollout(label, got[i]?.costUsd ?? 0, got[i]?.usage)
     out[label] = got[i] as Rollout
   })
   return out
@@ -228,7 +265,7 @@ async function rollMany(ctx: RecursionContext, ledger: Ledger, items: [string, H
 
 function newResult(mode: Mode, ctx: RecursionContext): ModeResult {
   const ledger = new Ledger(mode, ctx.task.id, ctx.k)
-  for (const r of ctx.base) ledger.rollout(r.label, r.costUsd ?? 0)
+  for (const r of ctx.base) ledger.rollout(r.label, r.costUsd ?? 0, r.usage)
   const rollouts: Record<string, Rollout> = {}
   for (const r of ctx.base) rollouts[r.label] = r
   return { mode, taskId: ctx.task.id, k: ctx.k, stages: [], trees: {}, rollouts, finals: [], ledger, errors: [] }
@@ -236,7 +273,7 @@ function newResult(mode: Mode, ctx: RecursionContext): ModeResult {
 
 function record(result: ModeResult, stages: Stage[]): void {
   for (const s of stages) {
-    result.ledger.session(s.label, s.usd, s.attempts)
+    result.ledger.session(s.label, s.usd, s.attempts, s.usage)
     result.stages.push(s)
     result.trees[s.label] = s.tree
   }
@@ -325,7 +362,7 @@ export async function runSequential(ctx: RecursionContext): Promise<ModeResult> 
     })
     record(result, [comp])
     const r = await roll(ctx, ck, comp.tree)
-    result.ledger.rollout(ck, r.costUsd ?? 0)
+    result.ledger.rollout(ck, r.costUsd ?? 0, r.usage)
     result.rollouts[ck] = r
     history = [...roundPool, { label: ck, harness: comp.tree, rollout: r }]
     current = comp.tree
@@ -350,7 +387,7 @@ export function summarizeMode(r: ModeResult): object {
     finals: r.finals,
     fellBack: r.stages.filter(s => s.fellBack).map(s => s.label),
     keptBase: r.stages.filter(s => s.keptBase).map(s => s.label),
-    stages: r.stages.map(s => ({ label: s.label, dim: s.dim, fellBack: s.fellBack, keptBase: s.keptBase, attempts: s.attempts, usd: s.usd, notes: s.notes.slice(0, 1200), error: s.error })),
+    stages: r.stages.map(s => ({ label: s.label, dim: s.dim, fellBack: s.fellBack, keptBase: s.keptBase, attempts: s.attempts, usd: s.usd, usage: s.usage, rejections: s.rejections, notes: s.notes.slice(0, 1200), error: s.error })),
     rollouts: Object.values(r.rollouts).map(x => ({ label: x.label, ok: x.ok, delivered: x.delivered, error: x.error, wallMs: x.wallMs })),
     similarity: r.similarity,
     ledger: r.ledger.toJSON(),

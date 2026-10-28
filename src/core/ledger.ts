@@ -4,6 +4,8 @@
  * stages (k INV + k DOM + k compositions). Selection and reflection are outside the ledger.
  */
 
+import { addUsage, ZERO_USAGE, type TokenUsage } from './spec.ts'
+
 export const expectedRollouts = (k: number): number => 4 * k
 export const expectedSessions = (k: number): number => 3 * k
 
@@ -19,6 +21,10 @@ export interface LedgerEntry {
   label: string
   usd: number
   attempts: number
+  inputTokens: number
+  outputTokens: number
+  /** False when the executor/improver could not report usage for this entry. */
+  usageKnown: boolean
 }
 
 export class Ledger {
@@ -33,12 +39,22 @@ export class Ledger {
     this.k = k
   }
 
-  rollout(label: string, usd = 0): void {
-    this.entries.push({ kind: 'rollout', label, usd, attempts: 1 })
+  rollout(label: string, usd = 0, usage?: TokenUsage): void {
+    this.entries.push({ kind: 'rollout', label, usd, attempts: 1, inputTokens: usage?.inputTokens ?? 0, outputTokens: usage?.outputTokens ?? 0, usageKnown: !!usage })
   }
 
-  session(label: string, usd = 0, attempts = 1): void {
-    this.entries.push({ kind: 'session', label, usd, attempts })
+  session(label: string, usd = 0, attempts = 1, usage?: TokenUsage): void {
+    this.entries.push({ kind: 'session', label, usd, attempts, inputTokens: usage?.inputTokens ?? 0, outputTokens: usage?.outputTokens ?? 0, usageKnown: !!usage })
+  }
+
+  /** Summed tokens over entries that reported usage. */
+  get tokens(): TokenUsage {
+    return this.entries.reduce<TokenUsage>((s, e) => addUsage(s, e), { ...ZERO_USAGE })
+  }
+
+  /** Labels whose usage is unknown (e.g. workflow child agents). */
+  get usageUnknown(): string[] {
+    return this.entries.filter(e => !e.usageKnown).map(e => e.label)
   }
 
   labels(kind: LedgerEntry['kind']): string[] {
@@ -72,6 +88,6 @@ export class Ledger {
   }
 
   toJSON(): object {
-    return { mode: this.mode, taskId: this.taskId, k: this.k, R: this.R, P: this.P, usd: this.usd, entries: this.entries }
+    return { mode: this.mode, taskId: this.taskId, k: this.k, R: this.R, P: this.P, usd: this.usd, tokens: this.tokens, usageUnknown: this.usageUnknown, entries: this.entries }
   }
 }
