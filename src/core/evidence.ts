@@ -52,8 +52,11 @@ export function clip(text: string, max: number): string {
 
 function rolloutBlock(r: Rollout, lim: EvidenceLimits): string {
   const status = !r.ok ? `FAILED TO RUN${r.error ? `: ${r.error}` : ''}` : r.delivered ? 'delivered' : `PRODUCED NOTHING${r.error ? `: ${r.error}` : ''}`
+  // Output volume is evidence too: a rollout near its output budget will break if a harness asks for more steps.
+  const meter = r.usage ? `output tokens: ${r.usage.outputTokens}${r.wallMs !== undefined ? `, wall: ${Math.round(r.wallMs / 1000)}s` : ''}` : ''
   return [
     `### rollout \`${r.label}\` -- ${status}`,
+    ...(meter ? [meter] : []),
     '',
     '<trajectory>',
     clip(r.trajectory || '(no trajectory recorded)', lim.trajectoryChars),

@@ -140,3 +140,11 @@ test('eval scores deliverables against expect, and stripExpect keeps grading dat
   await new Harness2({ executor: new DemoExecutor(), improver: spy, work: { work: 'reconcile signed ledgers' }, baseTree: DEMO_BASE, k: 1 }).runTask(stripExpect(t))
   assert.ok(seen.length > 0 && seen.every(m => !m.includes('85\\.15$') && !m.includes('"pattern"')))
 })
+
+test('evidence reports output tokens per rollout and the toolless note names the output budget', async () => {
+  const { buildEvidence } = await import('../src/core/evidence.ts')
+  const { TOOLLESS_NOTE } = await import('../src/core/recursion.ts')
+  const ev = buildEvidence({ task: { id: 't', domain: 'd', prompt: 'p' }, harness: {}, harnessLabel: 'base', base: [{ label: 'base1', ok: true, delivered: true, deliverable: 'x', trajectory: 'y', wallMs: 61000, usage: { inputTokens: 1, outputTokens: 64344, cacheReadTokens: 0 } }] } as never)
+  assert.match(ev, /output tokens: 64344, wall: 61s/)
+  assert.match(TOOLLESS_NOTE, /OUTPUT is also finite/)
+})

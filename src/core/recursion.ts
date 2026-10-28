@@ -27,6 +27,11 @@ into its prompt as text, and the source material is inlined into the request. Do
 instruction that requires a tool call before answering -- a run that emits a tool call delivers
 nothing. Encode procedure as prose the solver can follow in-context, and do not add scripts.
 
+Its OUTPUT is also finite: each rollout above reports its output tokens, and a run that reaches the
+limit is cut off and delivers nothing. When a rollout already used most of its budget, an edit that
+adds passes (recompute twice, restate every row, long audits) will break it; prefer edits that make
+the same work more compact (terse working, a running subtotal instead of re-listing rows).
+
 This limit belongs to the PROBE, not to the harness: an adopted harness is later activated for
 agents that DO have tools. Never write "no tools are available" or similar into any component.`
 
