@@ -89,7 +89,7 @@ export class LlmExecutor implements Executor {
 
   async execute(task: TaskSpec, harness: HarnessTree, _runId: string, signal?: AbortSignal): Promise<ExecResult> {
     const started = Date.now()
-    const system = renderHarnessPrompt(harness, this.opts.surface ?? DEFAULT_SURFACE)
+    const system = renderHarnessPrompt(harness, this.opts.surface ?? DEFAULT_SURFACE, { oneShot: true })
     try {
       const args: Parameters<typeof streamText>[1] = { provider: this.opts.provider, model: this.opts.model, system, prompt: taskMessage(task) }
       if (this.opts.temperature !== undefined) args.temperature = this.opts.temperature

@@ -83,7 +83,7 @@ if (cmd === 'demo') {
             let lastErr = ''
             // Transport failures (resets, early stream ends) are retried: they say nothing about the harness.
             for (let attempt = 1; attempt <= 3; attempt++) try {
-              const r = await deepseekChat({ apiKey, model: values['solver-model'], ...(baseUrl ? { baseUrl } : {}) }, renderHarnessPrompt(harness), task.prompt + Object.entries(task.sources ?? {}).map(([n, b]) => `\n<source name="${n}">\n${b}\n</source>`).join(''))
+              const r = await deepseekChat({ apiKey, model: values['solver-model'], ...(baseUrl ? { baseUrl } : {}) }, renderHarnessPrompt(harness, DEFAULT_SURFACE, { oneShot: true }), task.prompt + Object.entries(task.sources ?? {}).map(([n, b]) => `\n<source name="${n}">\n${b}\n</source>`).join(''))
               return toollessRollout(r.text, `[ASSISTANT]\n${r.text}`, Date.now() - started, { inputTokens: r.inputTokens, outputTokens: r.outputTokens, cacheReadTokens: r.cacheReadTokens }, price, r.finishReason)
             } catch (e) {
               lastErr = (e as Error).message

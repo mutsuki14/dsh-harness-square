@@ -198,3 +198,16 @@ test('toollessRollout treats a truncated answer as undelivered and says why', as
   const ev = buildEvidence({ task: { id: 't', domain: 'd', prompt: 'p' }, harness: {}, harnessLabel: 'base', base: [{ ...cut, label: 'base1' }] } as never)
   assert.match(ev, /PRODUCED NOTHING: output limit reached/)
 })
+
+test('one-shot rendering adds a runtime note and inlines scripts; the default base tree is tool-agnostic', async () => {
+  const { renderHarnessPrompt, ONE_SHOT_RUNTIME_NOTE } = await import('../src/dsh/render.ts')
+  const { DEFAULT_BASE_TREE } = await import('../src/dsh/defaults.ts')
+  assert.doesNotMatch(DEFAULT_BASE_TREE['systemprompt.md'] ?? '', /tool/i)
+  const tree = { ...DEFAULT_BASE_TREE, 'scripts/sum.py': 'print(1 + 1)\n' }
+  const live = renderHarnessPrompt(tree)
+  assert.ok(!live.includes(ONE_SHOT_RUNTIME_NOTE))
+  assert.match(live, /\.harness2\/scripts\/sum\.py/)
+  const oneShot = renderHarnessPrompt(tree, undefined, { oneShot: true })
+  assert.ok(oneShot.endsWith(ONE_SHOT_RUNTIME_NOTE))
+  assert.match(oneShot, /print\(1 \+ 1\)/)
+})

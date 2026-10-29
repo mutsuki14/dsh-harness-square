@@ -67,7 +67,16 @@ export function renderPoliciesAsProse(tree: HarnessTree, surface: SurfaceSpec = 
  * Render the full harness as one system prompt (for one-shot / subprocess executors).
  * Skills are inlined because the executor cannot offer the on-demand tool; the prompt says so.
  */
-export function renderHarnessPrompt(tree: HarnessTree, surface: SurfaceSpec = DEFAULT_SURFACE, opts: { inlineSkills?: boolean; policiesAsProse?: boolean } = {}): string {
+/**
+ * Appended by one-shot executors. It describes the RUNTIME, not the harness, so it is identical for
+ * every harness under comparison and never enters an adopted tree.
+ */
+export const ONE_SHOT_RUNTIME_NOTE =
+  '## Runtime\n\nThis run is a single reply with no tool access: the source material is included in the request. ' +
+  'Do the work in your reply and give the requested deliverable as text. Where the instructions above mention tools, ' +
+  'files or scripts, apply their intent directly to the material in front of you.'
+
+export function renderHarnessPrompt(tree: HarnessTree, surface: SurfaceSpec = DEFAULT_SURFACE, opts: { inlineSkills?: boolean; policiesAsProse?: boolean; oneShot?: boolean } = {}): string {
   const parts: string[] = []
   const always = renderAlwaysOn(tree, surface)
   if (always) parts.push(always)
@@ -86,7 +95,13 @@ export function renderHarnessPrompt(tree: HarnessTree, surface: SurfaceSpec = DE
   }
   const scripts = scriptPaths(surface, tree)
   if (scripts.length) {
-    parts.push('## Helper scripts\n\nThese files are available in the workspace under `.harness2/`:\n\n' + scripts.map(s => `- \`.harness2/${s}\``).join('\n'))
+    parts.push(
+      opts.oneShot
+        ? '## Helper scripts\n\nThe harness ships these scripts; they cannot be run in this reply, so apply the procedure they implement by hand:\n\n' +
+            scripts.map(s => `### \`${s}\`\n\n\`\`\`\n${(tree[s] ?? '').trimEnd()}\n\`\`\``).join('\n\n')
+        : '## Helper scripts\n\nThese files are available in the workspace under `.harness2/`:\n\n' + scripts.map(s => `- \`.harness2/${s}\``).join('\n'),
+    )
   }
+  if (opts.oneShot) parts.push(ONE_SHOT_RUNTIME_NOTE)
   return parts.join('\n\n')
 }

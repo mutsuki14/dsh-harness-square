@@ -9,7 +9,8 @@ import type { HarnessTree } from '../core/tree.ts'
 /** A deliberately small starting harness: refinement adds only what evidence argues for. */
 export const DEFAULT_BASE_TREE: HarnessTree = Object.freeze({
   'systemprompt.md':
-    'Work the request end to end. Read the supplied material before acting, do the work with your tools, ' +
+    // Tool-agnostic on purpose: the same harness runs in tool-using agents and in one-shot probes.
+    'Work the request end to end. Read the supplied material before acting, do the work, ' +
     'and finish by checking that every requested deliverable exists and says what was asked.\n',
   'guardrails.md': 'Never invent facts, figures, citations or file contents. When the material is silent, say so.\n',
   'memory.md': '',
