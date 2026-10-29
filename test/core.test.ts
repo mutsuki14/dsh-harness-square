@@ -210,3 +210,33 @@ test('validate rejects scripts that do not compile and accepts ones that do', as
   assert.throws(() => validate(DEFAULT_SURFACE, { ...base, 'scripts/sum.py': 'print(sum([1, 2]\n' }), /scripts\/sum\.py does not compile/)
   assert.doesNotThrow(() => validate(DEFAULT_SURFACE, { ...base, 'scripts/sum.py': 'print(sum([1, 2]\n' }, { compileScripts: false }))
 })
+
+test('runStream runs domains concurrently but keeps each domain in order; adoptedIsBase is reported', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'h2dom-'))
+  const order: string[] = []
+  let live = 0
+  let peak = 0
+  const exec = new DemoExecutor()
+  const slow = Object.assign(Object.create(exec), {
+    async execute(task: any, tree: any) {
+      live++
+      peak = Math.max(peak, live)
+      await new Promise(r => setTimeout(r, 5))
+      live--
+      return exec.execute(task, tree)
+    },
+  })
+  const tasks = [
+    { ...DEMO_TASKS[0]!, id: 'a/1', domain: 'a' },
+    { ...DEMO_TASKS[1]!, id: 'b/1', domain: 'b' },
+    { ...DEMO_TASKS[1]!, id: 'a/2', domain: 'a' },
+  ]
+  const h2 = new Harness2({ executor: slow, improver: new DemoImprover(), work: { work: 'reconcile signed ledgers' }, baseTree: DEMO_BASE, k: 1, width: 1, domainWorkers: 2, libraryDir: join(dir, 'lib'), onProgress: e => { if (e.type === 'selection') order.push(e.taskId) } })
+  const out = await h2.runStream(tasks)
+  assert.deepEqual(out.map(r => r.taskId), ['a/1', 'b/1', 'a/2'])
+  assert.ok(order.indexOf('a/1') < order.indexOf('a/2'))
+  assert.ok(peak >= 2, `expected domains to overlap, peak=${peak}`)
+  assert.equal(out[2]!.startedFrom, 'current:a__1')
+  for (const r of out) assert.equal(typeof r.adoptedIsBase, 'boolean')
+  assert.equal(out[0]!.adoptedIsBase, false)
+})

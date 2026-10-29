@@ -17,7 +17,7 @@ import { ExperienceLibrary, slug } from './library.ts'
 import { mapLimit, roll, runMode, summarizeMode, type Mode, type ModeResult, type RecursionContext } from './recursion.ts'
 import { reflectAdoption, runSelection, type Selection } from './selection.ts'
 import { addUsage, checkWorkPrompts, type TokenUsage, type Executor, type Improver, type ProgressSink, type Rollout, type TaskSpec, type WorkPrompts } from './spec.ts'
-import { DEFAULT_SURFACE, writeTree, type HarnessTree, type SurfaceSpec } from './tree.ts'
+import { DEFAULT_SURFACE, isUnchanged, writeTree, type HarnessTree, type SurfaceSpec } from './tree.ts'
 
 export interface Harness2Options {
   executor: Executor
@@ -41,6 +41,8 @@ export interface Harness2Options {
   reflect?: boolean
   allowSubagents?: boolean
   width?: number
+  /** Domains run concurrently in `runStream`; tasks within a domain stay ordered (harness2 `--workers`). */
+  domainWorkers?: number
   limits?: Partial<EvidenceLimits>
   onProgress?: ProgressSink
   validateTree?: (tree: HarnessTree) => void
@@ -55,6 +57,8 @@ export interface TaskResult {
   modeResult: ModeResult
   selection: Selection
   adoptedTree: HarnessTree
+  /** The adopted tree equals the tree the task started from (harness2 `chosen_tree_is_base`). */
+  adoptedIsBase: boolean
   adoptedRollout?: Rollout
   libraryUpdated: boolean
   usd: number
@@ -159,6 +163,7 @@ export class Harness2 {
       modeResult,
       selection,
       adoptedTree,
+      adoptedIsBase: isUnchanged(baseTree, adoptedTree),
       libraryUpdated,
       usd,
       usage,
@@ -184,6 +189,7 @@ export class Harness2 {
         k,
         startedFrom: from,
         adopted: selection.chosenLabel || null,
+        adoptedIsBase: out.adoptedIsBase,
         selectionOk: selection.ok,
         libraryUpdated,
         usd,
@@ -198,11 +204,17 @@ export class Harness2 {
 
   /** Run tasks in stream order; each task in a domain reads what earlier ones wrote. */
   async runStream(tasks: TaskSpec[], signal?: AbortSignal): Promise<TaskResult[]> {
-    const out: TaskResult[] = []
-    for (const t of tasks) {
-      if (signal?.aborted) break
-      out.push(await this.runTask(t, signal))
-    }
-    return out
+    // Domains are independent (each has its own library), so they may run concurrently; tasks within
+    // a domain stay in stream order because each reads what the earlier ones wrote.
+    const byDomain = new Map<string, number[]>()
+    tasks.forEach((t, i) => byDomain.set(t.domain, [...(byDomain.get(t.domain) ?? []), i]))
+    const results: (TaskResult | undefined)[] = new Array(tasks.length)
+    await mapLimit([...byDomain.values()], Math.max(1, this.opts.domainWorkers ?? 1), async idxs => {
+      for (const i of idxs) {
+        if (signal?.aborted) return
+        results[i] = await this.runTask(tasks[i] as TaskSpec, signal)
+      }
+    })
+    return results.filter((r): r is TaskResult => !!r)
   }
 }
