@@ -35,6 +35,8 @@ const { positionals, values } = parseArgs({
     harness: { type: 'string', multiple: true },
     repeats: { type: 'string', default: '1' },
     width: { type: 'string', default: '4' },
+    'domain-workers': { type: 'string', default: '1' },
+    'no-warm-start': { type: 'boolean', default: false },
     help: { type: 'boolean', short: 'h' },
   },
 })
@@ -52,7 +54,13 @@ const price = (() => {
 const log = (e: { type: string; label?: string; message?: string }) => console.error(`  ${e.type}${e.label ? ` ${e.label}` : ''}${e.message ? ` ${e.message}` : ''}`)
 
 if (!cmd || values.help) {
-  console.log('usage: harness2-dsh demo [--k N] [--mode parallel|sequential] [--out DIR]\n       harness2-dsh run --tasks tasks.json [--k N] [--mode M] [--out DIR] [--executor llm|headless]')
+  console.log(
+    'usage: harness2-dsh demo [--k N] [--mode parallel|sequential] [--out DIR]\n' +
+      '       harness2-dsh run  --tasks tasks.json [--k N] [--mode M] [--out DIR] [--executor llm|headless]\n' +
+      '                         [--model M] [--solver-model M] [--price in,out[,cached]] [--width N]\n' +
+      '                         [--domain-workers N] [--no-warm-start]\n' +
+      '       harness2-dsh eval --tasks heldout.json --harness <dir>|base [--harness ...] [--repeats N] [--executor llm|headless]',
+  )
   process.exit(cmd ? 0 : 1)
 }
 
@@ -108,11 +116,11 @@ if (cmd === 'demo') {
     writeFileSync(join(out, 'eval.json'), `${JSON.stringify(report, null, 2)}\n`)
   } else {
     const improver = new DeepSeekApiImprover({ apiKey, model: values.model, ...(baseUrl ? { baseUrl } : {}), ...(price ? { price } : {}) })
-    const h2 = new Harness2({ executor, improver, work: spec.work ?? DEFAULT_WORK, baseTree: DEFAULT_BASE_TREE, k, mode, runsDir: join(out, 'runs'), libraryDir: join(out, 'library'), onProgress: log })
+    const h2 = new Harness2({ executor, improver, work: spec.work ?? DEFAULT_WORK, baseTree: DEFAULT_BASE_TREE, k, mode, width: Number(values.width), domainWorkers: Number(values['domain-workers']), warmStart: !values['no-warm-start'], runsDir: join(out, 'runs'), libraryDir: join(out, 'library'), onProgress: log })
     // Grading data never enters the improvement loop.
     for (const r of await h2.runStream(spec.tasks.map(stripExpect))) {
       const cost = price ? ` usd=${r.usd.toFixed(4)}` : ''
-      console.log(`${r.taskId}: adopted=${r.selection.ok ? r.selection.chosenLabel : `none (selection failed: ${r.selection.error ?? 'unknown'}; kept ${r.startedFrom})`} library=${r.libraryUpdated} tokens_in=${r.usage.inputTokens} tokens_cached=${r.usage.cacheReadTokens ?? 0} tokens_out=${r.usage.outputTokens}${cost}${r.usageUnknown.length ? ` usage_unknown=${r.usageUnknown.join(',')}` : ''}`)
+      console.log(`${r.taskId}: start=${r.startedFrom} adopted=${r.selection.ok ? r.selection.chosenLabel : `none (selection failed: ${r.selection.error ?? 'unknown'}; kept ${r.startedFrom})`}${r.adoptedIsBase ? ' (unchanged)' : ''} library=${r.libraryUpdated} tokens_in=${r.usage.inputTokens} tokens_cached=${r.usage.cacheReadTokens ?? 0} tokens_out=${r.usage.outputTokens}${cost}${r.usageUnknown.length ? ` usage_unknown=${r.usageUnknown.join(',')}` : ''}`)
     }
   }
 } else {
