@@ -72,7 +72,33 @@ export class ExperienceLibrary {
     return readTree(this.surface, join(this.dir(domain), 'harnesses', taskSlug, 'harness'))
   }
 
-  /** The most recently adopted harness in a domain, used as the next task's warm start. */
+  /**
+   * Record the domain's CURRENT harness: the latest adopted tree, whether or not reflection found a
+   * lesson worth a library entry. Entries stay lesson-gated (harness2); the warm start must not be,
+   * or an adoption with no transferable lesson is silently lost for the next task.
+   */
+  setCurrent(domain: string, taskId: string, harness: HarnessTree, label: string): void {
+    assertNoGraderVerdicts(harness)
+    const d = join(this.dir(domain), 'current')
+    rmSync(join(d, 'harness'), { recursive: true, force: true })
+    writeTree(this.surface, harness, join(d, 'harness'))
+    writeFileSync(join(d, 'current.json'), `${JSON.stringify({ taskId, label, adoptedAt: new Date().toISOString() }, null, 2)}\n`, 'utf8')
+  }
+
+  current(domain: string): { taskSlug: string; label: string; tree: HarnessTree } | undefined {
+    const d = join(this.dir(domain), 'current')
+    const p = join(d, 'current.json')
+    if (!existsSync(p)) return undefined
+    try {
+      const meta = JSON.parse(readFileSync(p, 'utf8')) as { taskId: string; label: string }
+      const tree = readTree(this.surface, join(d, 'harness'))
+      return Object.keys(tree).length ? { taskSlug: slug(meta.taskId), label: meta.label, tree } : undefined
+    } catch {
+      return undefined
+    }
+  }
+
+  /** The most recent library entry in a domain (fallback warm start for libraries written before `current`). */
   latest(domain: string): { taskSlug: string; entry: LibraryEntry; tree: HarnessTree } | undefined {
     const all = this.entries(domain)
       .map(s => ({ taskSlug: s, entry: this.entry(domain, s) }))

@@ -87,6 +87,8 @@ export class Harness2 {
   /** The harness a task in `domain` starts from, and where it came from. */
   startingHarness(domain: string): { tree: HarnessTree; from: string } {
     if (this.opts.warmStart && this.library) {
+      const current = this.library.current(domain)
+      if (current) return { tree: current.tree, from: `current:${current.taskSlug}` }
       const latest = this.library.latest(domain)
       if (latest && Object.keys(latest.tree).length) return { tree: latest.tree, from: `library:${latest.taskSlug}` }
     }
@@ -136,6 +138,7 @@ export class Harness2 {
 
     const adoptedTree = selection.ok ? modeResult.trees[selection.chosenLabel] ?? baseTree : baseTree
     let libraryUpdated = false
+    if (selection.ok && this.library) this.library.setCurrent(task.domain, task.id, adoptedTree, selection.chosenLabel)
     if (this.opts.reflect && selection.ok) {
       const exp = await reflectAdoption({ task, work, result: modeResult, selection, baseTree, improver, ...(signal ? { signal } : {}) })
       if (exp && this.library) {

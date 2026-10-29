@@ -51,7 +51,7 @@ for (const mode of ['parallel', 'sequential'] as const) {
       assert.equal(exec.count, 8 * k)
       assert.equal(a!.adoptedRollout?.deliverable.trim(), 'Total: 85.15')
       assert.ok(a!.libraryUpdated)
-      assert.match(b!.startedFrom, /^library:/)
+      assert.match(b!.startedFrom, /^current:/)
       assert.equal(b!.modeResult.rollouts['base1']?.deliverable.trim(), 'Total: 20.25')
     })
   }
@@ -147,4 +147,19 @@ test('evidence reports output tokens per rollout and the toolless note names the
   const ev = buildEvidence({ task: { id: 't', domain: 'd', prompt: 'p' }, harness: {}, harnessLabel: 'base', base: [{ label: 'base1', ok: true, delivered: true, deliverable: 'x', trajectory: 'y', wallMs: 61000, usage: { inputTokens: 1, outputTokens: 64344, cacheReadTokens: 0 } }] } as never)
   assert.match(ev, /output tokens: 64344, wall: 61s/)
   assert.match(TOOLLESS_NOTE, /OUTPUT is also finite/)
+})
+
+test('an adoption without a library lesson still becomes the next task\'s warm start', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'h2cur-'))
+  const imp = new DemoImprover()
+  // Reflection answers NO_ENTRY: the library stays lesson-gated, but the adopted tree must carry over.
+  const noLesson = { name: 'no-lesson', call: async (req: any) => (String(req.label).startsWith('experience.') ? { text: '<edits>\ncomponent: memory.md\n</edits>\nNO_ENTRY' } : imp.call(req)) }
+  const h2 = new Harness2({ executor: new DemoExecutor(), improver: noLesson, work: { work: 'reconcile signed ledgers' }, baseTree: DEMO_BASE, k: 1, runsDir: join(dir, 'runs'), libraryDir: join(dir, 'lib') })
+  const a = await h2.runTask(DEMO_TASKS[0]!)
+  assert.ok(a.selection.ok)
+  assert.equal(a.libraryUpdated, false)
+  assert.notDeepEqual(a.adoptedTree, DEMO_BASE)
+  const start = h2.startingHarness(DEMO_TASKS[1]!.domain)
+  assert.match(start.from, /^current:/)
+  assert.deepEqual(start.tree, a.adoptedTree)
 })
