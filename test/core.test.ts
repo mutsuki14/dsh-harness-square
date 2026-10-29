@@ -197,3 +197,16 @@ test('restored reference prompt rules are present', async () => {
   assert.match(P.select(wp, 2, ['A', 'B']), /CHECK THE CLAIMS AGAINST THE SOURCE MATERIAL/)
   assert.match(P.experience(wp), /An edit that appeared only in a rejected candidate/)
 })
+
+test('validate rejects scripts that do not compile and accepts ones that do', async () => {
+  const { validate, scriptSyntaxError, DEFAULT_SURFACE } = await import('../src/core/tree.ts')
+  assert.equal(scriptSyntaxError('scripts/a.py', 'print(1)\n'), '')
+  assert.match(scriptSyntaxError('scripts/a.py', 'x = (1,\n'), /never closed|SyntaxError/)
+  assert.notEqual(scriptSyntaxError('scripts/a.sh', 'if then fi\n'), '')
+  assert.notEqual(scriptSyntaxError('scripts/a.js', 'const x = ;\n'), '')
+  assert.equal(scriptSyntaxError('scripts/a.mjs', 'import fs from "node:fs"\nawait 1\n'), '')
+  const base = { 'systemprompt.md': 'Run `scripts/sum.py` to total rows.' }
+  assert.doesNotThrow(() => validate(DEFAULT_SURFACE, { ...base, 'scripts/sum.py': 'print(sum([1, 2]))\n' }))
+  assert.throws(() => validate(DEFAULT_SURFACE, { ...base, 'scripts/sum.py': 'print(sum([1, 2]\n' }), /scripts\/sum\.py does not compile/)
+  assert.doesNotThrow(() => validate(DEFAULT_SURFACE, { ...base, 'scripts/sum.py': 'print(sum([1, 2]\n' }, { compileScripts: false }))
+})

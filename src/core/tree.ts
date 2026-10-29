@@ -17,6 +17,7 @@
  * The edit contract is omitted-is-inherited: a proposal only emits what it changes.
  */
 
+import { spawnSync } from 'node:child_process'
 import { mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { dirname, join, relative, sep } from 'node:path'
 import { validatePolicyPlugin } from './policy.ts'
@@ -285,6 +286,32 @@ export function assertNoGraderVerdicts(tree: HarnessTree): void {
 
 export interface ValidateOptions {
   allowSubagents?: boolean
+  /** Syntax-check scripts (harness2 `_py_compiles`). Default true; skipped when an interpreter is absent. */
+  compileScripts?: boolean
+}
+
+const SYNTAX_CHECKERS: Record<string, { cmd: string; args: string[] }> = {
+  py: { cmd: 'python3', args: ['-c', 'import sys; compile(sys.stdin.read(), sys.argv[1], "exec")', '<script>'] },
+  sh: { cmd: 'bash', args: ['-n'] },
+  js: { cmd: process.execPath, args: ['--check', '-'] },
+  mjs: { cmd: process.execPath, args: ['--input-type=module', '--check', '-'] },
+}
+
+/**
+ * Return a one-line syntax error, or '' when the script parses (or no checker is available).
+ * A script that does not parse fails at the first run, after the solver has already committed to it.
+ */
+export function scriptSyntaxError(rel: string, src: string): string {
+  const ext = rel.split('.').pop() ?? ''
+  const c = SYNTAX_CHECKERS[ext]
+  if (!c) return ''
+  const args = ext === 'py' ? [...c.args.slice(0, -1), rel] : c.args
+  const r = spawnSync(c.cmd, args, { input: src, encoding: 'utf8', timeout: 10_000 })
+  if (r.error) return '' // interpreter missing or timed out: do not reject on infrastructure grounds
+  if (r.status === 0) return ''
+  const lines = `${r.stderr ?? ''}`.split('\n').map(l => l.trim()).filter(Boolean)
+  const msg = lines.find(l => /Error|error|unexpected/.test(l)) ?? lines.at(-1) ?? 'syntax error'
+  return msg.slice(0, 200)
 }
 
 /** Validate a proposed tree. Throws one error listing every defect. */
@@ -325,6 +352,10 @@ export function validate(surface: SurfaceSpec, tree: HarnessTree, opts: Validate
     const base = rel.split('/').pop() ?? rel
     if (surface.reservedScripts.has(base)) errs.push(`${rel}: ${base} is reserved by the runtime`)
     if (!(tree[rel] ?? '').trim()) errs.push(`${rel}: empty script`)
+    else if (opts.compileScripts !== false) {
+      const e = scriptSyntaxError(rel, tree[rel] ?? '')
+      if (e) errs.push(`${rel} does not compile: ${e}`)
+    }
   }
   for (const [rel, text] of Object.entries(tree)) {
     if (!rel.endsWith('.md')) continue
