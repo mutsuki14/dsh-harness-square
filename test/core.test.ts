@@ -244,3 +244,20 @@ test('runStream runs domains concurrently but keeps each domain in order; adopte
   for (const r of out) assert.equal(typeof r.adoptedIsBase, 'boolean')
   assert.equal(out[0]!.adoptedIsBase, false)
 })
+
+test('code expectations: extract the module from a reply and run hidden tests against it', async () => {
+  const { extractCode, check } = await import('../src/core/eval.ts')
+  const tests = { lang: 'python' as const, module: 'mathx', code: 'from mathx import double\nassert double(2) == 4, "double(2)"\nassert isinstance(double(2), int), "int"\n' }
+  const good = 'Here it is:\n\n```python\ndef double(x):\n    return 2 * x\n```\n'
+  const bad = '```python\ndef double(x):\n    return 2.0 * x\n```'
+  assert.match(extractCode(good, 'mathx'), /def double/)
+  assert.match(extractCode('<file path="src/mathx.py">\ndef double(x):\n    return x + x\n</file>', 'mathx'), /x \+ x/)
+  assert.deepEqual(await check(good, { tests }), { ok: true, detail: 'all hidden tests passed' })
+  const r = await check(bad, { tests })
+  assert.equal(r.ok, false)
+  assert.match(r.detail, /AssertionError: int/)
+  assert.equal((await check('no code here', { tests })).detail, 'no code block found in the deliverable')
+  const slow = await check('```python\ndef double(x):\n    while True: pass\n```', { tests: { ...tests, timeoutMs: 1000 } })
+  assert.equal(slow.ok, false)
+  assert.match(slow.detail, /killed/)
+})

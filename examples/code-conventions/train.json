@@ -1,0 +1,25 @@
+{
+  "work": {
+    "work": "A developer on the Acme billing team writes small Python modules for the team codebase from a short spec, following the team conventions, and replies with the complete module.",
+    "domainWord": "codebase",
+    "deliverableWord": "module"
+  },
+  "tasks": [
+    {
+      "id": "code/train-standards",
+      "domain": "billing-code",
+      "sources": {
+        "CODING-STANDARDS.md": "# Acme billing codebase -- coding standards\n\nThese apply to every module in the billing codebase.\n\n1. Money is always an integer number of cents (`int`). Functions take cents and return cents.\n   Never return a float, and never compute money with floats (`0.1 + 0.2` is not `0.3`).\n2. When a cents result has a fractional part, round HALF AWAY FROM ZERO: 12.5 -> 13, -12.5 -> -13,\n   12.4 -> 12. Python's built-in `round()` rounds half to even and must not be used for money.\n3. Invalid input raises the team error type. Every module defines it at top level, exactly:\n\n       class AcmeError(ValueError):\n           def __init__(self, code, message=\"\"):\n               super().__init__(f\"{code}: {message}\")\n               self.code = code\n\n   Error codes: `E_NEG` a negative amount where none is allowed, `E_RANGE` a count, percentage or\n   rate outside its allowed range, `E_FORMAT` a malformed string (amount, date, ...).\n"
+      },
+      "prompt": "Write the module `invoice.py` for the billing codebase following CODING-STANDARDS.md. It must define `invoice_total(lines, tax_percent)`: `lines` is a list of `(quantity, unit_price_cents)` pairs; return the subtotal plus tax at `tax_percent` (0 to 100) applied to the subtotal. A negative quantity or price, or a tax percent outside 0..100, is invalid input. Reply with the complete module in one ```python code block."
+    },
+    {
+      "id": "code/train-calendar",
+      "domain": "billing-code",
+      "sources": {
+        "CALENDAR.md": "# Acme company calendar -- business days\n\nThese rules apply to every date calculation in the codebase.\n\n- Dates go in and come out as ISO strings `YYYY-MM-DD`. A malformed date string is invalid input\n  (team error type, code `E_FORMAT`).\n- A business day is Monday to Friday that is not a company holiday.\n- Company holidays: 2026-11-26, 2026-11-27, 2026-12-24, 2026-12-25, 2026-12-31, 2027-01-01.\n- A date that must be a business day but is not one ROLLS FORWARD to the next business day.\n"
+      },
+      "prompt": "Write the module `calendar_utils.py` for the billing codebase following CALENDAR.md and the team coding standards. It must define `next_business_day(date)` (the first business day strictly after `date`) and `business_days_between(start, end)` (the number of business days d with start < d <= end; 0 when end <= start). Reply with the complete module in one ```python code block."
+    }
+  ]
+}

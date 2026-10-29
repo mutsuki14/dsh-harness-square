@@ -202,6 +202,39 @@ task from legitimately REPLACING a rule.
 - No held-out date, ticket id or count appears in any adopted harness.
 - No code or prompt changes were made for this family.
 
+### Third family: code, graded by hidden unit tests
+
+`examples/code-conventions/` (reproduce with `run.sh`, flash only). `eval` now also accepts
+`"expect": {"tests": {"lang": "python", "module": "...", "code": "..."}}`. The module is extracted from the
+reply (a `<file>` block or the longest fenced block that defines something) and the hidden tests run
+against it in a throwaway directory with a timeout. The improvement loop never sees the tests.
+
+- **Two training tasks**: write `invoice.py` with CODING-STANDARDS.md attached (money is integer cents,
+  round half away from zero, never `round()`, the `AcmeError(code)` error type with `E_NEG` / `E_RANGE` /
+  `E_FORMAT`), then `calendar_utils.py` with CALENDAR.md attached (company holidays, roll-forward rule).
+- **Six held-out modules** with new specs and **no document**: discounts, even splitting, amount parsing,
+  adding business days, due dates, late fees. Every function name is new, and none appears in any adopted
+  harness. Verified offline against reference variants: a correct module passes all six; one using
+  `round()`, plain `ValueError` or a weekends-only calendar fails the tasks that need that convention.
+
+| harness | run A | run B | run C |
+|---|---|---|---|
+| base (nothing attached) | 0/18 | | |
+| base with both documents attached ("ceiling") | 14/18 | | |
+| after task 1 (coding standards) | 9/18 | | |
+| **after task 2 (+ calendar)** | **16/18** | **13/18** | **16/18** |
+
+- 0/54 → 45/54 (83%) across three runs, above the documents-attached baseline (14/18 per run).
+- After task 1, all three money tasks passed; the three calendar tasks failed. After task 2, the calendar
+  tasks passed too.
+- **All 9 remaining failures are the same thing**: for a negative day count the module raises `E_NEG` where
+  the test expects `E_RANGE`. The standards say `E_RANGE` is for "a count ... outside its allowed range" and
+  `E_NEG` for "a negative amount", so a negative day count is arguably either. The documents-attached
+  baseline fails on exactly this too. It is an ambiguity in the test spec, not a convention the harness lost.
+- Not a leak, but worth knowing: the improver wrote `next_business_day("2026-11-25") == "2026-11-30"` into a
+  skill as a self-check. It is the obvious example derived from the holiday list in the training material,
+  and it happens to coincide with one held-out test input. The improver never saw the tests.
+
 What the held-out runs show, honestly:
 
 - **No measured gain on the ledger families.** On the 200-row family the adopted harness was correct and transferred (a domain
