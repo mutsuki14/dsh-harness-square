@@ -193,6 +193,8 @@ test('restored reference prompt rules are present', async () => {
   assert.match(P.aggregate(wp), /Absence is not contradiction/)
   assert.match(inv, /the mapping itself\nremoves it/)
   assert.match(P.propose(wp, 'DOM'), /if you add some, cut some/)
+  assert.match(P.propose(wp, 'DOM'), /STANDING CONVENTIONS ARE NOT MATTER FACTS/)
+  assert.match(P.aggregate(wp), /standing convention the material declares/)
   const agg = P.aggregate(wp, { k: 2 })
   assert.match(agg, /draws from ONE distribution/)
   assert.match(agg, /Open what each side PRODUCED/)

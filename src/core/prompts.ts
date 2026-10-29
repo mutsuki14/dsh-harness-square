@@ -195,6 +195,13 @@ Two hard rules:
 Matter facts are in the supplied material. Say where to retrieve and reconcile them; never put
 presumed facts into the harness.
 
+STANDING CONVENTIONS ARE NOT MATTER FACTS. When the supplied material declares a rule that applies
+beyond this task -- a team handbook, a house style, a standard line format, a unit or exclusion
+policy "for every export" -- that rule is ${domain} knowledge. Encode it (usually as a skill whose
+trigger names the work type) EVEN WHEN THIS RUN GOT IT RIGHT: the run was right because the source
+was attached, and the next task in this ${domain} may not carry it. Encode only what the material
+actually states, and say where it came from.
+
 Do not diagnose commands, retries, reading order, output paths, budgeting, scripts or plugins. A
 parallel candidate owns procedure; stay on practitioner knowledge.`
 
@@ -299,7 +306,10 @@ export function aggregate(wp: WorkPrompts, opts: { k?: number; index?: number } 
     '# YOUR JOB\n\nCompose ONE harness, starting from the BASE harness shown below. All of these are valid, judged only on what the rollouts support:\n' +
       '- MERGE across candidates -- the expected outcome when an INV edit and a DOM edit each earn their place. Resolve overlaps rather than concatenating.\n' +
       '- ADOPT ONE WHOLESALE if a single candidate is simply the best state.\n' +
-      `- KEEP_BASE.\n\n${KEEP_BASE}`,
+      `- KEEP_BASE.\n\n${KEEP_BASE}\n\n` +
+      'One exception to "do not fix what already worked": a standing convention the material declares for future work ' +
+      '(a handbook, a house format, a policy "for every" case) that a candidate encoded is worth keeping even if the base ' +
+      'rollout got it right -- it got it right because the source was attached, and later tasks may not carry it.',
     k > 1 &&
       `You are one of ${k} aggregators composing a final from this same evidence in parallel, and you will not see the others. Do not aim for the consensus answer -- commit to the harness you can defend.`,
     yardstick(wp),
