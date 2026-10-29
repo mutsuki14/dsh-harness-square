@@ -163,3 +163,37 @@ test('an adoption without a library lesson still becomes the next task\'s warm s
   assert.match(start.from, /^current:/)
   assert.deepEqual(start.tree, a.adoptedTree)
 })
+
+test('evidence shrinks per-rollout budgets instead of clipping away the pool or library', async () => {
+  const { buildEvidence, READING_GUIDE } = await import('../src/core/evidence.ts')
+  const big = 'x'.repeat(40_000)
+  const rollout = (label: string) => ({ label, ok: true, delivered: true, deliverable: big, trajectory: big })
+  const ev = buildEvidence({
+    task: { id: 't', domain: 'd', prompt: 'p' },
+    harness: { 'systemprompt.md': 'base' },
+    harnessLabel: 'base',
+    base: [rollout('base1'), rollout('base2')],
+    pool: ['inv1', 'dom1', 'inv2', 'dom2'].map(l => ({ label: l, harness: { 'systemprompt.md': l }, rollout: rollout(l) })),
+    library: 'LIBRARY-SENTINEL',
+    limits: { totalChars: 80_000 },
+  } as never)
+  assert.ok(ev.length <= 80_000, `length ${ev.length}`)
+  assert.ok(ev.includes(READING_GUIDE))
+  for (const l of ['inv1', 'dom1', 'inv2', 'dom2']) assert.ok(ev.includes(`candidate \`${l}\``), l)
+  assert.ok(ev.includes('LIBRARY-SENTINEL'))
+  assert.match(ev, /chars elided/)
+})
+
+test('restored reference prompt rules are present', async () => {
+  const P = await import('../src/core/prompts.ts')
+  const wp = { work: 'w' }
+  const inv = P.propose(wp, 'INV')
+  assert.match(inv, /THE LIBRARY HOLDS FINISHED HARNESSES/)
+  assert.match(inv, /the mapping itself\nremoves it/)
+  assert.match(P.propose(wp, 'DOM'), /if you add some, cut some/)
+  const agg = P.aggregate(wp, { k: 2 })
+  assert.match(agg, /draws from ONE distribution/)
+  assert.match(agg, /Open what each side PRODUCED/)
+  assert.match(P.select(wp, 2, ['A', 'B']), /CHECK THE CLAIMS AGAINST THE SOURCE MATERIAL/)
+  assert.match(P.experience(wp), /An edit that appeared only in a rejected candidate/)
+})

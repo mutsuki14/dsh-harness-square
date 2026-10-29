@@ -68,10 +68,34 @@ function rolloutBlock(r: Rollout, lim: EvidenceLimits): string {
   ].join('\n')
 }
 
+/** How to read the evidence (harness2 `context.mission`), adapted to an inline document. */
+export const READING_GUIDE = [
+  'Read the request and the harness you are editing first. Inventory every rollout and candidate below and inspect each ' +
+    'at least once before deciding. For a candidate, compare what changed from its editing baseline, what behavior changed ' +
+    'in its rollout, what improved, and what regressed or remained unresolved. Then deep-read the evidence relevant to any ' +
+    'edit. Cite the specific trajectory moment behind every change; one you cannot trace to a moment is speculation.',
+  'Long trajectories may carry an explicit `…[N chars elided]…` marker. That marker is ours, inserted to fit this ' +
+    'document; it is not behavior by the solver. Do not diagnose it as a solver failure.',
+].join('\n\n')
+
 /** Render the evidence document for one improvement stage. */
 export function buildEvidence(input: EvidenceInput): string {
   const lim = { ...DEFAULT_LIMITS, ...input.limits }
-  const parts: string[] = ['# EVIDENCE']
+  // Never clip the document as a whole: that silently drops the pool or library, the sections a
+  // composer needs most. Instead shrink the per-rollout budgets until everything fits.
+  for (let i = 0; i < 6; i++) {
+    const doc = renderEvidence(input, lim)
+    if (doc.length <= lim.totalChars) return doc
+    lim.trajectoryChars = Math.max(2_000, Math.floor(lim.trajectoryChars * 0.6))
+    lim.deliverableChars = Math.max(1_500, Math.floor(lim.deliverableChars * 0.7))
+    lim.sourceChars = Math.max(2_000, Math.floor(lim.sourceChars * 0.7))
+  }
+  const doc = renderEvidence(input, lim)
+  return doc.length <= lim.totalChars ? doc : clip(doc, lim.totalChars)
+}
+
+function renderEvidence(input: EvidenceInput, lim: EvidenceLimits): string {
+  const parts: string[] = ['# EVIDENCE', READING_GUIDE]
   parts.push(`## The request (verbatim)\n\n<task id="${input.task.id}" domain="${input.task.domain}">\n${input.task.prompt.trim()}\n</task>`)
   const sources = Object.entries(input.task.sources ?? {})
   if (sources.length) {
@@ -107,5 +131,5 @@ export function buildEvidence(input: EvidenceInput): string {
   if (input.library?.trim()) {
     parts.push(`## Experience library for the \`${input.task.domain}\` domain\n\nEarlier tasks in this domain, their adopted harness and what was learned. Use it as guidance, not as fact about this matter.\n\n${input.library.trim()}`)
   }
-  return clip(parts.join('\n\n'), lim.totalChars)
+  return parts.join('\n\n')
 }

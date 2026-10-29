@@ -170,9 +170,9 @@ export async function reflectAdoption(opts: ReflectOptions): Promise<Experience 
     return [
       `### candidate \`${s.label}\` (${s.dim})${s.label === sel.chosenLabel ? ' -- ADOPTED' : ''}${s.fellBack ? ' -- fell back to its input harness' : ''}${s.keptBase ? ' -- KEEP_BASE' : ''}`,
       `<diff_vs_base>\n${renderTreeDiff(opts.baseTree, s.tree, 120)}\n</diff_vs_base>`,
-      s.notes ? `<decision_notes>\n${clip(s.notes, 1500)}\n</decision_notes>` : '',
+      s.notes ? `<decision_notes>\n${clip(s.notes, 3000)}\n</decision_notes>` : '',
       `rollout: ${status}`,
-      r ? `<trajectory>\n${clip(r.trajectory, 4000)}\n</trajectory>\n<deliverable>\n${clip(r.deliverable, 2500)}\n</deliverable>` : '',
+      r ? `<trajectory>\n${clip(r.trajectory, 8000)}\n</trajectory>\n<deliverable>\n${clip(r.deliverable, 5000)}\n</deliverable>` : '',
     ]
       .filter(Boolean)
       .join('\n')
@@ -182,7 +182,7 @@ export async function reflectAdoption(opts: ReflectOptions): Promise<Experience 
     P.experience(opts.work),
     `# WHAT HAPPENED\n\nHarness \`${sel.chosenLabel}\` was adopted. The selection reasoning was:\n\n${sel.why || '(none)'}\n\nAnonymous ids map to labels as: ${JSON.stringify(sel.idMap)}`,
     `<task>\n${opts.task.prompt.trim()}\n</task>`,
-    `## Base rollouts\n\n${base.map(r => `### \`${r.label}\` -- ${r.delivered ? 'delivered' : 'produced nothing'}\n<trajectory>\n${clip(r.trajectory, 4000)}\n</trajectory>`).join('\n\n')}`,
+    `## Base rollouts\n\n${base.map(r => `### \`${r.label}\` -- ${r.delivered ? 'delivered' : `produced nothing${r.error ? `: ${r.error}` : ''}`}\n<trajectory>\n${clip(r.trajectory, 8000)}\n</trajectory>\n<deliverable>\n${r.delivered ? clip(r.deliverable, 5000) : '(none)'}\n</deliverable>`).join('\n\n')}`,
     `## Candidates\n\n${rows.join('\n\n')}`,
   ].join('\n\n')
   try {

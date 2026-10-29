@@ -100,15 +100,34 @@ each decision and the trajectory moment behind it.`
 const GENERALIZE = (domain: string) => `# GROUND IT IN THIS WORKSPACE, SHAPE IT FOR THE ${domain.toUpperCase()}
 
 The harness you produce runs on THIS task. VERIFIED FACTS ABOUT THIS WORKSPACE ARE THE MOST
-VALUABLE THING YOU CAN ENCODE -- they are what the base rollouts paid to discover. When the
-evidence establishes an exact mapping, a unit, a missing counterpart or which look-alike value
-actually satisfies a requirement, WRITE THE FACT ITSELF into the relevant component, anchored
-("in this workspace, ...") so a reader can tell fact from procedure. Record only what the
-evidence establishes -- a guessed fact is worse than none.
+VALUABLE THING YOU CAN ENCODE -- they are what the base rollouts paid to discover, and what the
+solver most often gets wrong on its own. When the evidence establishes an exact mapping, a unit,
+a missing counterpart or which look-alike value actually satisfies a requirement, WRITE THE FACT
+ITSELF into the relevant component -- not merely the procedure for rediscovering it. A rule that
+tells the agent HOW to find a mapping leaves the hardest step to the agent; the mapping itself
+removes it. Anchor such facts ("in this workspace, ...") so a reader can tell fact from procedure,
+and record only what the evidence establishes -- a guessed fact is worse than none.
 
 Structure and PROCEDURE, by contrast, should be written for the ${domain}: if this harness is
 adopted it enters the ${domain}'s library, where later tasks read it as an example. Procedure
-that would be wrong for a different task in the same ${domain} is scoped too narrowly.`
+that would be wrong for a different task in the same ${domain} is scoped too narrowly; workspace
+facts are expected to differ and are labelled as such.
+
+  workspace fact   "in this workspace, role 'HR' in file A maps to position 'HR Manager' in file B;
+                    'Manager' has no counterpart"           -- verified here, labelled here
+  procedure        "reconcile names explicitly before joining; list unmatched leftovers"
+  too generic      "be thorough"                            -- changes no behaviour
+
+THE LIBRARY HOLDS FINISHED HARNESSES FROM EARLIER TASKS. They are examples to read and learn
+from -- not part of the harness you are editing. To reuse a component from one, COPY it into your
+reply as a file, and RE-VERIFY its workspace facts against the evidence in front of you: an
+earlier task's mapping or threshold is a hypothesis here, not a fact. A skill that invokes a
+script you saw only in the library, without copying that script across, fails validation and is
+thrown away.
+
+A named component usually beats prose. A skill, a script or a subagent is a reusable thing the
+next task can invoke or copy; a paragraph buried in always-on text is paid for on every run and
+travels badly.`
 
 const INV_TEMPLATE = (deliverable: string, levers: string) => `# YOUR DIMENSION: INV -- how the agent WORKS
 
@@ -147,16 +166,24 @@ Turn it into checkable rules:
   and practical use.
 - DECISION RULE: state the trigger, supporting evidence, conflicts to resolve, and uncertainty
   that must remain explicit.
-- ENCODING: a skill is the default home for domain knowledge with a recognisable trigger; it
-  costs nothing until that situation arises, and the next task in this ${domain} can invoke it.
-  Name the skill in always-on text so it can be found. Always-on memory is for short universal
-  facts that apply to EVERY task here. Never store this matter's facts as durable memory.
+- ENCODING: choose the FORM as deliberately as the content. A skill is the default home for
+  domain knowledge that has a recognisable trigger -- what a given document type requires, the
+  anatomy a practitioner expects, the checks that apply to one work type. It costs nothing until
+  that situation arises, and the next task in this ${domain} can invoke it. Name the skill in
+  always-on text so it can be found. Always-on memory is for the short, universal facts that
+  apply to EVERY task here, and it is paid for on every run -- so if you add some, cut some.
+  Never store this matter's facts as durable memory: they are wrong anchors for the next task.
 
 ${levers}
 
 Two hard rules:
-- Never invent an authority, identifier, standard or citation.
-- State knowledge the agent can APPLY and CHECK, not background reading.
+- Never invent an authority, identifier, standard or citation. Point to an authorized source;
+  asserting it requires evidence.
+- State knowledge the agent can APPLY and CHECK, not background reading. "Before finishing,
+  confirm X covers each of A, B, C" beats a paragraph of exposition.
+
+Matter facts are in the supplied material. Say where to retrieve and reconcile them; never put
+presumed facts into the harness.
 
 Do not diagnose commands, retries, reading order, output paths, budgeting, scripts or plugins. A
 parallel candidate owns procedure; stay on practitioner knowledge.`
@@ -212,13 +239,15 @@ export function propose(wp: WorkPrompts, dim: 'INV' | 'DOM', opts: ProposeOption
     '',
     'Every edit must trace to a moment in a trajectory. For each one ask: which run did what, and would this ' +
       'text have changed it? If you cannot name the moment, the edit is speculation and costs context for nothing. Prefer, in order:',
-    '  1. a DIVERGENCE -- the runs disagreed, so the agent can already do it and just needs telling.',
+    '  1. a DIVERGENCE -- the runs disagreed, so the agent can already do it and just needs telling. This is the cheapest win.',
     '  2. a repeated concrete failure -- the same error or omission in every run.',
     '  3. a risk visible in a trajectory but not yet realised.',
-    'Do not fix what the runs already got right, and do not restate what the harness already says clearly.',
+    'Do not fix what the runs already got right, and do not restate what the harness already says clearly; ' +
+      'duplicated instruction dilutes the rest.',
     ...(where.trim() ? ['', where.trim()] : []),
     '',
-    'Do not hedge toward an average -- commit to the single most defensible version of your dimension. A later stage compares and merges.',
+    'Do not hedge toward an average or try to cover every base -- commit to the single most defensible version ' +
+      'of your dimension. A later stage compares and merges.',
   ].join('\n')
   return join([
     "You are adapting an autonomous agent's harness.",
@@ -250,10 +279,12 @@ export function aggregate(wp: WorkPrompts, opts: { k?: number; index?: number } 
       'The candidates share the same task, evidence and likely model biases. Agreement is support, not independent ' +
       'proof; contradiction is a reason to inspect the trajectories, not to vote.',
     `# HOW TO WEIGH THE EVIDENCE\n\n` +
-      `- A failure that repeats across the base set is a real property of the base harness and the strongest thing you can act on. A defect in 1/${k} is noise.\n` +
-      '- Each candidate has ONE rollout, so a single good or bad outcome is weak evidence either way. An edit earns its place when a SPECIFIC MOMENT in a trajectory shows the mechanism.\n' +
-      '- Judge the downside as heavily as the upside. The costliest failure is a run that produces nothing.\n' +
-      '- IF ANY ROLLOUT ASSOCIATED WITH AN EDIT PRODUCED NOTHING, say so explicitly in your notes and treat that edit as UNSAFE unless the rest of the evidence is overwhelming.',
+      `The ${k} base rollout${k > 1 ? 's are' : ' is'} draws from ONE distribution -- read them as a set, not as ${k} separate stories.\n\n` +
+      `- A failure that repeats across the base set is a real property of the base harness and the strongest thing you can act on. A defect in 1/${k} is noise, and an edit aimed at it is overfitting to one sample.\n` +
+      "- Each candidate has ONE rollout, so a single good or bad outcome is weak evidence either way. An edit earns its place when a SPECIFIC MOMENT in a trajectory shows the mechanism -- 'this looks like good practice' is not evidence; name the moment.\n" +
+      '- Open what each side PRODUCED, not only its trajectory: judging an edit without reading its product is guessing. An edit whose skill was never applied or whose rule was ignored changed nothing, whatever it says on paper.\n' +
+      '- Judge the downside as heavily as the upside. The costliest failure is a run that produces nothing; an edit that helps one rollout and risks emptiness elsewhere is a bad edit.\n' +
+      '- IF ANY ROLLOUT ASSOCIATED WITH AN EDIT PRODUCED NOTHING, say so explicitly in your notes and treat that edit as UNSAFE unless the rest of the evidence is overwhelming. Never merge an edit from a non-delivering rollout without stating why.',
     '# YOUR JOB\n\nCompose ONE harness, starting from the BASE harness shown below. All of these are valid, judged only on what the rollouts support:\n' +
       '- MERGE across candidates -- the expected outcome when an INV edit and a DOM edit each earn their place. Resolve overlaps rather than concatenating.\n' +
       '- ADOPT ONE WHOLESALE if a single candidate is simply the best state.\n' +
@@ -264,8 +295,9 @@ export function aggregate(wp: WorkPrompts, opts: { k?: number; index?: number } 
     ANSWER_FREE,
     EVIDENCE_BOUNDARY,
     SURFACE_DSH,
-    '# NOTES FORMAT\n\nIn your single `<notes>` block, one line per decision:\n\n' +
-      `    kept|revised|dropped -> <which edit> -> <the trajectory moment or base-set pattern, with counts, e.g. 'failed in ${Math.max(k - 1, 2)}/${k} base rollouts'>`,
+    '# NOTES FORMAT\n\nIn your single `<notes>` block, one line per decision, in this exact shape:\n\n' +
+      `    kept|revised|dropped -> <which edit> -> <the trajectory moment or base-set pattern that decided it, with counts where sets are involved, e.g. 'failed in ${Math.max(k - 1, 2)}/${k} base rollouts'>\n\n` +
+      'A decision without evidence attached is a decision the next reader cannot audit.',
   ])
 }
 
@@ -305,18 +337,30 @@ export function select(wp: WorkPrompts, n: number, ids: string[]): string {
     '# THE CANDIDATES ARE ANONYMOUS ON PURPOSE\n\nThe ids are arbitrary and shuffled, and tell you nothing about how an output ' +
       'was produced. No candidate is privileged and there is no credit for a more elaborate one; several may look nearly ' +
       'identical, and then you decide on the small differences that actually matter.',
+    '# WHAT YOU ARE LOOKING AT\n\nEach candidate is what one run PRODUCED for the same request. You are choosing between ARTIFACTS: ' +
+      'you are not told how any of them was produced and you cannot see the runs that made them, so judge each one on what ' +
+      'it is, against the request and the source -- never on how impressive or thorough it sounds.',
     '# HOW TO DECIDE, IN THIS ORDER\n\n' +
       `1. DELIVERY. Is every ${deliverable} named by the instructions present, in the requested form, with every named part?\n\n` +
-      '2. CONFORMANCE. Is it ONLY what was asked for? Named fields, sections or an order define the SHAPE. Extra or renamed parts are deviations, not improvements. A requested value must be PRESENT AS A VALUE.\n\n' +
-      '3. FIDELITY. Check the claims against the source material. Reject invented specifics. Where the source is silent, prefer the candidate that says so.\n\n' +
-      '4. INTERNAL CONSISTENCY. Totals match rows; summaries agree with the tables they summarise; counts match items.\n\n' +
-      '5. OPERATIONAL FITNESS. Can the intended person or system actually use it without reconstructing missing work?\n\n' +
-      '6. FINISH. No placeholders, TODOs, broken references or visibly incomplete sections.\n\n' +
-      'Length and polish are not merits in themselves.',
+      '2. CONFORMANCE. Is it ONLY what was asked for? Where the instructions name fields, columns, sections, a line format or an order, ' +
+      'those define the SHAPE, and the shape is part of the request. Extra or renamed parts, reworded headers and reordered fields are ' +
+      'DEVIATIONS, not improvements -- a downstream reader or importer may key on exact names and positions. Where the instruction is ' +
+      'explicit, match it exactly; where it is silent, prefer the plainest form that satisfies it. A value the request asks for must be ' +
+      'PRESENT AS A VALUE, not left for the reader to recompute.\n\n' +
+      '3. FIDELITY. CHECK THE CLAIMS AGAINST THE SOURCE MATERIAL. Verify the facts, figures, names and constraints a candidate asserts -- ' +
+      'do not take its word for them. Reject invented specifics. Where candidates disagree, the source decides; where it is silent, ' +
+      'prefer the candidate that says so over the one that fills the gap confidently.\n\n' +
+      '4. INTERNAL CONSISTENCY. Totals that match their rows, summaries that agree with the tables they summarise, counts that match ' +
+      'the items present. A number that contradicts another number in the same artifact is a defect even when you cannot tell which is wrong.\n\n' +
+      '5. OPERATIONAL FITNESS. Can the intended person or system actually use it without reconstructing missing work? Judge as the ' +
+      "requester's downstream consumer: an addition that helps a human read it but breaks an importer is a cost.\n\n" +
+      '6. FINISH. No placeholders, TODOs, broken references or visibly incomplete sections. A truncation marker inserted for this ' +
+      'comparison is not a defect in the original artifact.\n\n' +
+      'Length and polish are not merits in themselves. A shorter, correct, complete, exactly-shaped answer beats a longer one with a gap or an embellishment.',
     wp.selectionChecks?.trim() && `# WHAT CORRECTNESS MEANS FOR THIS WORK\n\n${wp.selectionChecks.trim()}`,
     ANSWER_FREE.replace('by what the trajectories show', 'by what the source material shows'),
     EVIDENCE_BOUNDARY,
-    `# OUTPUT FORMAT\n\nFirst the reasoning, then the choice as the very last thing:\n\n<why>\nAt most 6 lines. Name the deciding criterion and the closest runner-up.\n</why>\n\n\`\`\`choice\n<one of: ${ids.join(', ')}>\n\`\`\``,
+    `# OUTPUT FORMAT\n\nFirst the reasoning, then the choice as the very last thing:\n\n<why>\nAt most 6 lines. Name the criterion that decided it, and the closest runner-up with the specific thing that cost it the pick. If you rejected a candidate on CONFORMANCE, say which field, line or section.\n</why>\n\n\`\`\`choice\n<one of: ${ids.join(', ')}>\n\`\`\``,
   ])
 }
 
@@ -329,15 +373,27 @@ export function experience(wp: WorkPrompts): string {
     work(wp),
     lens(wp),
     '# THE ADOPTED CANDIDATE IS NOT THE ONLY EVIDENCE\n\nSelection compared DELIVERABLES with the harnesses hidden, so the ' +
-      'choice says which output read best -- not which edit worked. Treat every candidate as evidence. Read the trajectories, not the verdict.',
+      'choice says which output read best -- not which edit worked. Treat every candidate as evidence. An edit that appeared ' +
+      'only in a rejected candidate may still be the one that changed behavior for the better, and an edit inside the adopted ' +
+      'candidate may have contributed nothing to why it was adopted. Read the trajectories, not the verdict.',
     '# WHAT EACH EDIT DID\n\nDiff every candidate harness against the base. For each component any candidate changed, write ' +
-      'one row: the component, what the edit changed, the observed difference in execution, and a verdict: `helped`, `hurt`, ' +
-      '`no observed effect` or `confounded`. Prefer `confounded` whenever a candidate changed several components at once and ' +
-      'no execution isolates one, or a single rollout is all that stands behind the difference.',
-    '# THE ONE LESSON THAT TRANSFERS\n\nWrite at most one durable entry, and only if the edit rows support it. The `cue` ' +
-      'describes the SHAPE OF SITUATION the lesson applies to (not this task\'s facts). The `lesson` is the operation to ' +
-      'perform on a harness, naming the component. The `evidence` cites the edit rows. If the record shows no concrete, ' +
-      'reusable execution contrast, write the single line NO_ENTRY in place of the <experience> block.',
+      'one row: the component, what the edit actually changed, the observed difference in execution it produced, and a verdict.\n\n' +
+      'Verdicts are `helped`, `hurt`, `no observed effect` and `confounded`. Use `confounded` -- and prefer it -- whenever a ' +
+      'candidate changed several components at once and no execution isolates one of them, or when a single rollout is all that ' +
+      'stands behind the difference. A confounded row is a useful record; an invented attribution poisons the library for every ' +
+      'later task. Cite the run and the point in the trajectory where behavior diverges. If two candidates changed the same ' +
+      'component in different ways, say which forms were tried and what each produced.',
+    '# THE ONE LESSON THAT TRANSFERS\n\nNow write at most one durable entry, and only if the edit rows support it.\n\n' +
+      "The `cue` describes the SHAPE OF SITUATION the lesson applies to, so it can fire on a different matter. Not this task's " +
+      'facts -- the pattern. The `lesson` is the operation to perform on a harness, stated so it can be applied and checked, ' +
+      'and it must name the component it concerns.\n\n' +
+      "Too generic is useless ('be thorough'); too specific never fires again ('the fee rose to 250 on Jan 1'). Aim between: " +
+      "'when a team convention is shown once in supplied material and later tasks omit it, record the convention itself in a " +
+      "skill whose trigger names that work type'.\n\n" +
+      'The `evidence` field cites the edit rows the lesson rests on. A lesson resting only on `confounded` rows is a guess: ' +
+      'narrow it to what the record does show, or decline. Adoption alone never establishes that an edit helped or will transfer. ' +
+      'If the record shows no concrete, reusable execution contrast, write the single line NO_ENTRY in place of the <experience> ' +
+      'block -- the edit rows are still worth writing.',
     ANSWER_FREE,
     EVIDENCE_BOUNDARY,
     '# OUTPUT FORMAT\n\n<edits>\ncomponent: <path in the harness tree>\ncandidates: <labels that carried this edit>\n' +
