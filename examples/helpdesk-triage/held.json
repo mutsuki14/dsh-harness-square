@@ -1,0 +1,75 @@
+{
+  "work": {
+    "work": "A helpdesk analyst triages batches of IT support tickets -- severity and routing team for each -- and reports them in the formats the operations team ingests, following the team policies.",
+    "domainWord": "helpdesk area",
+    "deliverableWord": "triage report"
+  },
+  "tasks": [
+    {
+      "id": "helpdesk/triage-1",
+      "domain": "helpdesk",
+      "prompt": "Triage the 2026-11-03 ticket batch in tickets.csv following the team triage policy. One line per ticket in the form `<id> <severity> <team>` (e.g. `X01 P2 app`), nothing else on those lines.",
+      "sources": {
+        "tickets.csv": "id,requester,users_affected,summary\nN01,chen@corp.example,1,\"Possible credential leak on the shared drive\"\nN06,eli@corp.example,111,\"Monthly report export is empty\"\nN04,gus@contractor.example,49,\"Monthly report export is empty\"\nN05,dara@corp.example,1,\"Database query times out in the CRM - team blocked\"\nN02,dara@contractor.example,4,\"Database query times out in the CRM\"\nN07,bo@corp.example,64,\"Expense app crashes on submit\"\nN08,eli@contractor.example,4,\"Network printer unreachable from the annex\"\nN03,kai@corp.example,109,\"VPN disconnects during video calls\"\n"
+      },
+      "expect": {
+        "pattern": "^(?=[\\s\\S]*^[-*\\s`]*N01\\s+P1\\s+sec[`\\s]*$)(?=[\\s\\S]*^[-*\\s`]*N06\\s+P1\\s+data[`\\s]*$)(?=[\\s\\S]*^[-*\\s`]*N04\\s+P1\\s+desk[`\\s]*$)(?=[\\s\\S]*^[-*\\s`]*N05\\s+P2\\s+data[`\\s]*$)(?=[\\s\\S]*^[-*\\s`]*N02\\s+P3\\s+desk[`\\s]*$)(?=[\\s\\S]*^[-*\\s`]*N07\\s+P1\\s+app[`\\s]*$)(?=[\\s\\S]*^[-*\\s`]*N08\\s+P3\\s+desk[`\\s]*$)(?=[\\s\\S]*^[-*\\s`]*N03\\s+P1\\s+net[`\\s]*$)"
+      }
+    },
+    {
+      "id": "helpdesk/triage-2",
+      "domain": "helpdesk",
+      "prompt": "Triage the 2026-11-10 ticket batch in tickets.csv following the team triage policy. One line per ticket in the form `<id> <severity> <team>` (e.g. `X01 P2 app`), nothing else on those lines.",
+      "sources": {
+        "tickets.csv": "id,requester,users_affected,summary\nP05,bo@corp.example,3,\"Expense app crashes on submit - team blocked\"\nP02,fay@contractor.example,11,\"ETL job for invoices failed overnight\"\nP01,kai@corp.example,2,\"Possible credential leak on the shared drive\"\nP04,hana@corp.example,40,\"Firewall rejects the build server\"\nP03,chen@contractor.example,4,\"VPN disconnects during video calls\"\nP07,bo@corp.example,3,\"Login page loads slowly\"\nP06,lea@corp.example,22,\"ETL job for invoices failed overnight\"\nP08,ivo@corp.example,4,\"Network printer unreachable from the annex\"\n"
+      },
+      "expect": {
+        "pattern": "^(?=[\\s\\S]*^[-*\\s`]*P05\\s+P2\\s+app[`\\s]*$)(?=[\\s\\S]*^[-*\\s`]*P02\\s+P2\\s+desk[`\\s]*$)(?=[\\s\\S]*^[-*\\s`]*P01\\s+P1\\s+sec[`\\s]*$)(?=[\\s\\S]*^[-*\\s`]*P04\\s+P1\\s+net[`\\s]*$)(?=[\\s\\S]*^[-*\\s`]*P03\\s+P3\\s+desk[`\\s]*$)(?=[\\s\\S]*^[-*\\s`]*P07\\s+P3\\s+app[`\\s]*$)(?=[\\s\\S]*^[-*\\s`]*P06\\s+P2\\s+data[`\\s]*$)(?=[\\s\\S]*^[-*\\s`]*P08\\s+P3\\s+net[`\\s]*$)"
+      }
+    },
+    {
+      "id": "helpdesk/summary-1",
+      "domain": "helpdesk",
+      "prompt": "Severity and team are already assigned in tickets.csv. Give the standard daily triage summary for the 2026-11-17 batch.",
+      "sources": {
+        "tickets.csv": "id,requester,users_affected,summary,sev,team\nQ01,lea@corp.example,87,\"Phishing link flagged by finance\",P1,sec\nQ07,chen@corp.example,22,\"Expense app crashes on submit\",P2,app\nQ03,kai@corp.example,18,\"VPN client fails to connect from home\",P2,net\nQ06,dara@corp.example,3,\"Sales dashboard shows yesterday numbers\",P3,data\nQ04,jun@corp.example,34,\"Sales dashboard shows yesterday numbers\",P1,data\nQ05,lea@corp.example,3,\"ETL job for invoices failed overnight - team blocked\",P2,data\nQ02,ivo@contractor.example,14,\"ETL job for invoices failed overnight\",P2,desk\nQ08,hana@corp.example,75,\"Network printer unreachable from the annex\",P1,net\n"
+      },
+      "expect": {
+        "pattern": "^TRIAGE 2026-11-17 P1=3 P2=4 P3=1 SEC=1$"
+      }
+    },
+    {
+      "id": "helpdesk/summary-2",
+      "domain": "helpdesk",
+      "prompt": "Severity and team are already assigned in tickets.csv. Give the standard daily triage summary for the 2026-11-24 batch.",
+      "sources": {
+        "tickets.csv": "id,requester,users_affected,summary,sev,team\nR03,eli@corp.example,7,\"VPN client fails to connect from home\",P2,net\nR06,kai@corp.example,4,\"Monthly report export is empty\",P3,data\nR05,fay@corp.example,3,\"Expense app crashes on submit - team blocked\",P2,app\nR02,eli@contractor.example,5,\"Monthly report export is empty\",P2,desk\nR08,ivo@corp.example,2,\"Network printer unreachable from the annex\",P3,net\nR01,lea@corp.example,3,\"Suspicious login prompt on the intranet\",P1,sec\nR04,eli@corp.example,44,\"Network printer unreachable from the annex\",P1,net\nR07,bo@contractor.example,92,\"Mobile app shows a blank screen\",P1,desk\n"
+      },
+      "expect": {
+        "pattern": "^TRIAGE 2026-11-24 P1=3 P2=3 P3=2 SEC=1$"
+      }
+    },
+    {
+      "id": "helpdesk/both-1",
+      "domain": "helpdesk",
+      "prompt": "Triage the 2026-12-01 ticket batch in tickets.csv following the team triage policy, then give the standard daily triage summary.",
+      "sources": {
+        "tickets.csv": "id,requester,users_affected,summary\nS05,eli@corp.example,1,\"Monthly report export is empty - team blocked\"\nS01,eli@corp.example,109,\"Possible credential leak on the shared drive\"\nS06,dara@corp.example,3,\"Monthly report export is empty\"\nS07,chen@corp.example,59,\"Mobile app shows a blank screen\"\nS03,jun@corp.example,52,\"VPN disconnects during video calls\"\nS04,gus@corp.example,33,\"Calendar invites are not sending\"\nS08,bo@corp.example,4,\"Firewall rejects the build server\"\nS02,eli@contractor.example,4,\"ETL job for invoices failed overnight\"\n"
+      },
+      "expect": {
+        "pattern": "^TRIAGE 2026-12-01 P1=4 P2=1 P3=3 SEC=1$"
+      }
+    },
+    {
+      "id": "helpdesk/both-2",
+      "domain": "helpdesk",
+      "prompt": "Triage the 2026-12-08 ticket batch in tickets.csv following the team triage policy, then give the standard daily triage summary.",
+      "sources": {
+        "tickets.csv": "id,requester,users_affected,summary\nU06,eli@corp.example,3,\"ETL job for invoices failed overnight\"\nU04,ivo@contractor.example,46,\"Wifi drops every few minutes on floor 3\"\nU03,jun@corp.example,24,\"VPN disconnects during video calls\"\nU01,kai@corp.example,4,\"Suspicious login prompt on the intranet\"\nU08,gus@corp.example,2,\"Wifi drops every few minutes on floor 3\"\nU07,ivo@corp.example,2,\"Expense app crashes on submit\"\nU02,ivo@contractor.example,64,\"Database query times out in the CRM\"\nU05,ana@corp.example,2,\"ETL job for invoices failed overnight - team blocked\"\n"
+      },
+      "expect": {
+        "pattern": "^TRIAGE 2026-12-08 P1=3 P2=2 P3=3 SEC=1$"
+      }
+    }
+  ]
+}

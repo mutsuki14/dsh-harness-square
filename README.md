@@ -168,6 +168,40 @@ confirm the fixes generalise. The ledger families below were not re-run after th
   does not show that the method makes the model better at arithmetic. The ledger families below show it
   does not.
 
+### Second family, fresh after the fixes: helpdesk triage with a policy amendment
+
+`examples/helpdesk-triage/` (reproduce with `run.sh`, flash only). Written after the reference-alignment
+pass, never used to develop prompts. It differs from the acme family on every axis that matters:
+
+- **Domain and work**: classifying and routing IT tickets, not computing a revenue figure.
+- **Three training tasks, one document each**: the triage policy (routing precedence, severity thresholds),
+  the ops output standard (`TRIAGE <date> P1=n P2=n P3=n SEC=n`), and a **policy amendment** that changes
+  three rules from task 1 (contractors → `desk` instead of `vendor`, VPN → `net`, P1 threshold 50 → 30).
+- **Held-out tasks** attach nothing and are graded on the amended rules. Every batch contains a contractor
+  ticket, a VPN ticket and a ticket with 30–49 users, so a harness that kept the old rules fails. The checker
+  was verified offline: correct answers pass, pre-amendment answers fail.
+
+This tests the open question from the acme fixes: "inherited rules stay in force" must not stop a later
+task from legitimately REPLACING a rule.
+
+| harness | run A | run B | run C |
+|---|---|---|---|
+| base (nothing attached) | 0/18 | | |
+| ceiling: base with all three documents attached | 18/18 | | |
+| after task 1 (policy) | 0/18 | | |
+| after task 2 (+ output standard) | 6/18 | | |
+| **after task 3 (+ amendment)** | **18/18** | **18/18** | **18/18** |
+
+- 0/54 → 54/54 across three independent runs, matching the ceiling.
+- Run A's intermediate harnesses show it built up step by step. After task 1 the triage lines followed
+  the old policy, which is correct for that point in time but wrong for the held-out tasks. After task 2
+  the summary tasks passed (6/18). After task 3 everything passed.
+- All three final harnesses REPLACED the amended rules rather than keeping both: each skill names `desk`
+  as current and `vendor` as retired, adds VPN to the `net` rule, and states P1 at 30 users. All three
+  also kept the unchanged rules (`sec` precedence, the P2 rules) and task 2's output standard.
+- No held-out date, ticket id or count appears in any adopted harness.
+- No code or prompt changes were made for this family.
+
 What the held-out runs show, honestly:
 
 - **No measured gain on the ledger families.** On the 200-row family the adopted harness was correct and transferred (a domain
