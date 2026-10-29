@@ -97,6 +97,14 @@ Delete a file with \`<delete path="memory.md"/>\`. Files you do not mention are 
 To change nothing, reply \`<keep_base/>\`. Then end with exactly one \`<notes>\` block explaining
 each decision and the trajectory moment behind it.`
 
+/** Warm start (DSH extension): the edited harness may carry conventions from earlier tasks. */
+const INHERITED = (domain: string) => `THE HARNESS YOU ARE EDITING IS DIFFERENT: it may already carry conventions adopted on earlier tasks
+in this ${domain}. Absence is not contradiction -- a rule this task's material does not restate is
+still in force. Keep inherited rules intact, and never narrow or neutralise one ("apply only what
+this task's material states", "do not import other conventions") unless a trajectory HERE shows it
+producing a wrong result. When this task adds a convention, ADD it alongside the inherited ones and
+make the two compose; do not let the newer, narrower source silently override the older one.`
+
 const GENERALIZE = (domain: string) => `# GROUND IT IN THIS WORKSPACE, SHAPE IT FOR THE ${domain.toUpperCase()}
 
 The harness you produce runs on THIS task. VERIFIED FACTS ABOUT THIS WORKSPACE ARE THE MOST
@@ -124,6 +132,8 @@ reply as a file, and RE-VERIFY its workspace facts against the evidence in front
 earlier task's mapping or threshold is a hypothesis here, not a fact. A skill that invokes a
 script you saw only in the library, without copying that script across, fails validation and is
 thrown away.
+
+${INHERITED(domain)}
 
 A named component usually beats prose. A skill, a script or a subagent is a reusable thing the
 next task can invoke or copy; a paragraph buried in always-on text is paid for on every run and
@@ -273,6 +283,7 @@ export function aggregate(wp: WorkPrompts, opts: { k?: number; index?: number } 
       'the candidate proposers binds you -- you are the last gate, and merging an edit launders it.',
     work(wp),
     lens(wp),
+    `# INHERITED CONVENTIONS\n\n${INHERITED(wp.domainWord ?? 'domain')}`,
     `# WHAT YOU HAVE\n\n${k} rollout${k > 1 ? 's' : ''} under the unmodified harness, and ${n} candidate harnesses -- ` +
       `${k} on the INV dimension (how the agent works) and ${k} on the DOM dimension (what a practitioner knows). ` +
       'Each candidate was rolled out ONCE and you have that rollout.\n\n' +
@@ -308,6 +319,7 @@ export function composeRound(wp: WorkPrompts, t: number, k: number): string {
     `You are composing checkpoint ${t} of ${k} in a sequential adaptation loop.`,
     work(wp),
     lens(wp),
+    `# INHERITED CONVENTIONS\n\n${INHERITED(wp.domainWord ?? 'domain')}`,
     "# WHAT YOU HAVE\n\nThe rollouts under the unmodified harness (shared evidence), this round's INV and DOM candidates with " +
       "their rollouts, and every earlier round's candidates, checkpoints and trajectories. The previous checkpoint's own " +
       'rollout is on-policy evidence: it shows what the harness you are editing actually does.' +

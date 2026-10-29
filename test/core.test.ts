@@ -189,6 +189,8 @@ test('restored reference prompt rules are present', async () => {
   const wp = { work: 'w' }
   const inv = P.propose(wp, 'INV')
   assert.match(inv, /THE LIBRARY HOLDS FINISHED HARNESSES/)
+  assert.match(inv, /Absence is not contradiction/)
+  assert.match(P.aggregate(wp), /Absence is not contradiction/)
   assert.match(inv, /the mapping itself\nremoves it/)
   assert.match(P.propose(wp, 'DOM'), /if you add some, cut some/)
   const agg = P.aggregate(wp, { k: 2 })
