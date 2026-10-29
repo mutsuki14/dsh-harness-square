@@ -1,0 +1,84 @@
+{
+  "name": "dsh-harness2",
+  "version": "0.1.0",
+  "description": "Recursive agent harnessing (Harness2 ProposeProbeCompose) as a DeepSeek Harness plugin bundle",
+  "type": "module",
+  "main": "lib/dsh/index.js",
+  "types": "lib/dsh/index.d.ts",
+  "bin": {
+    "harness2-dsh": "bin/harness2-dsh.js"
+  },
+  "exports": {
+    ".": {
+      "types": "./lib/dsh/index.d.ts",
+      "default": "./lib/dsh/index.js"
+    },
+    "./core": {
+      "types": "./lib/core/index.d.ts",
+      "default": "./lib/core/index.js"
+    },
+    "./service": {
+      "types": "./lib/dsh/service.d.ts",
+      "default": "./lib/dsh/service.js"
+    },
+    "./runtime": {
+      "types": "./lib/dsh/runtime.d.ts",
+      "default": "./lib/dsh/runtime.js"
+    },
+    "./tools": {
+      "types": "./lib/dsh/tools.d.ts",
+      "default": "./lib/dsh/tools.js"
+    },
+    "./cordis.patch.yml": "./cordis.patch.yml",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib",
+    "bin",
+    "cordis.patch.yml",
+    "examples",
+    "README.md",
+    "README.zh.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "prepare": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.test.json",
+    "test": "node --test test/*.test.ts",
+    "demo": "node bin/harness2-dsh.js demo --k 2"
+  },
+  "keywords": [
+    "dsh-plugin",
+    "deepseek-harness",
+    "harness2",
+    "agent",
+    "cordis"
+  ],
+  "license": "Apache-2.0",
+  "engines": {
+    "node": ">=20",
+    "dsh": ">=0.2.0"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": ">=4.0.5 <5",
+    "@deepseek-ai/schemastery": ">=3.18.5 <4",
+    "@deepseek-ai/dsh-llm": ">=0.2.1-rc.4 <0.3.0"
+  },
+  "devDependencies": {
+    "@deepseek-ai/cordis": "^4.0.5",
+    "@deepseek-ai/schemastery": "^3.18.5",
+    "@types/node": "^22.19.1",
+    "typescript": "^5.9.3"
+  },
+  "peerDependenciesMeta": {
+    "@deepseek-ai/dsh-llm": {
+      "optional": true
+    }
+  }
+}

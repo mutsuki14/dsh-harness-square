@@ -1,0 +1,45 @@
+{
+  "work": {
+    "work": "A helpdesk analyst triages batches of IT support tickets -- severity and routing team for each -- and reports them in the formats the operations team ingests, following the team policies.",
+    "domainWord": "helpdesk area",
+    "deliverableWord": "triage report"
+  },
+  "tasks": [
+    {
+      "id": "helpdesk/train-policy",
+      "domain": "helpdesk",
+      "prompt": "Triage the 2026-09-14 ticket batch in tickets.csv following TRIAGE-POLICY.md. One line per ticket in the form `<id> <severity> <team>` (e.g. `X01 P2 app`), nothing else on those lines.",
+      "sources": {
+        "tickets.csv": "id,requester,users_affected,summary\nA06,fay@corp.example,3,\"ETL job for invoices failed overnight\"\nA05,jun@corp.example,3,\"Monthly report export is empty - team blocked\"\nA03,eli@corp.example,3,\"VPN client fails to connect from home\"\nA08,ivo@corp.example,6,\"Network printer unreachable from the annex\"\nA02,bo@contractor.example,4,\"Calendar invites are not sending\"\nA07,gus@corp.example,1,\"Expense app crashes on submit\"\nA01,eli@corp.example,16,\"Suspicious login prompt on the intranet\"\nA04,gus@corp.example,34,\"Firewall rejects the build server\"\n",
+        "TRIAGE-POLICY.md": "# Helpdesk triage policy\n\nEvery ticket gets a severity and a routing team. These rules apply to every batch the helpdesk triages.\n\n## Routing team (first matching rule wins)\n\n1. The summary mentions phishing, a credential, or something suspicious -> `sec`\n2. The requester's email ends in `@contractor.example` -> `vendor`\n3. The summary mentions wifi, DNS, a firewall or the network -> `net`\n4. The summary mentions a dashboard, a report, an ETL job or the database -> `data`\n5. Anything else -> `app`\n\n## Severity\n\n- `P1`: `users_affected` is 50 or more, or the ticket is routed to `sec`.\n- `P2`: `users_affected` is 5 or more, or the summary contains the word \"blocked\".\n- `P3`: everything else.\n"
+      },
+      "expect": {
+        "pattern": "^(?=[\\s\\S]*^[-*\\s`]*A06\\s+P3\\s+data[`\\s]*$)(?=[\\s\\S]*^[-*\\s`]*A05\\s+P2\\s+data[`\\s]*$)(?=[\\s\\S]*^[-*\\s`]*A03\\s+P3\\s+app[`\\s]*$)(?=[\\s\\S]*^[-*\\s`]*A08\\s+P2\\s+net[`\\s]*$)(?=[\\s\\S]*^[-*\\s`]*A02\\s+P3\\s+vendor[`\\s]*$)(?=[\\s\\S]*^[-*\\s`]*A07\\s+P3\\s+app[`\\s]*$)(?=[\\s\\S]*^[-*\\s`]*A01\\s+P1\\s+sec[`\\s]*$)(?=[\\s\\S]*^[-*\\s`]*A04\\s+P2\\s+net[`\\s]*$)"
+      }
+    },
+    {
+      "id": "helpdesk/train-format",
+      "domain": "helpdesk",
+      "prompt": "Severity and team are already assigned in tickets.csv. Give the daily triage summary for the 2026-09-28 batch as OUTPUT-SPEC.md describes.",
+      "sources": {
+        "tickets.csv": "id,requester,users_affected,summary,sev,team\nB01,hana@corp.example,1,\"Phishing link flagged by finance\",P1,sec\nB07,lea@contractor.example,3,\"Calendar invites are not sending\",P3,vendor\nB08,dara@corp.example,15,\"Network printer unreachable from the annex\",P2,net\nB03,gus@corp.example,17,\"VPN disconnects during video calls\",P2,app\nB02,ana@contractor.example,2,\"Database query times out in the CRM\",P3,vendor\nB04,lea@corp.example,30,\"DNS lookups failing for internal sites\",P2,net\nB06,jun@corp.example,98,\"Database query times out in the CRM\",P1,data\nB05,bo@corp.example,3,\"Sales dashboard shows yesterday numbers - team blocked\",P2,data\n",
+        "OUTPUT-SPEC.md": "# Daily triage summary -- output standard\n\nThe ops channel ingests the first line of every triage report automatically. It must be exactly\n\n    TRIAGE <batch date> P1=<n> P2=<n> P3=<n> SEC=<n>\n\nwhere each `P` field counts the tickets with that severity and `SEC` counts the tickets routed to\n`sec`. No markdown, no extra fields. Example: `TRIAGE 2026-05-02 P1=1 P2=4 P3=3 SEC=1`.\nAnything after the first line is free text for humans.\n"
+      },
+      "expect": {
+        "pattern": "^TRIAGE 2026-09-28 P1=2 P2=4 P3=2 SEC=1$"
+      }
+    },
+    {
+      "id": "helpdesk/train-update",
+      "domain": "helpdesk",
+      "prompt": "Triage the 2026-10-12 ticket batch in tickets.csv following the team triage policy as amended by POLICY-UPDATE-2026-10.md. One line per ticket in the form `<id> <severity> <team>` (e.g. `X01 P2 app`), nothing else on those lines.",
+      "sources": {
+        "tickets.csv": "id,requester,users_affected,summary\nC05,lea@corp.example,1,\"Database query times out in the CRM - team blocked\"\nC03,dara@corp.example,3,\"VPN client fails to connect from home\"\nC02,ivo@contractor.example,4,\"Monthly report export is empty\"\nC04,chen@corp.example,39,\"Firewall rejects the build server\"\nC07,fay@corp.example,1,\"Calendar invites are not sending\"\nC06,ana@contractor.example,3,\"Sales dashboard shows yesterday numbers\"\nC01,dara@corp.example,2,\"Phishing link flagged by finance\"\nC08,bo@corp.example,8,\"Wifi drops every few minutes on floor 3\"\n",
+        "POLICY-UPDATE-2026-10.md": "# Triage policy update -- effective 2026-10-01\n\nThis amends the helpdesk triage policy. Rules not mentioned here are unchanged.\n\n1. Contractor tickets (`@contractor.example`) now route to `desk`. The `vendor` team no longer exists.\n2. VPN problems are network problems: a summary that mentions VPN routes to `net`.\n3. The `P1` threshold is lowered: `users_affected` of 30 or more is `P1`.\n"
+      },
+      "expect": {
+        "pattern": "^(?=[\\s\\S]*^[-*\\s`]*C05\\s+P2\\s+data[`\\s]*$)(?=[\\s\\S]*^[-*\\s`]*C03\\s+P3\\s+net[`\\s]*$)(?=[\\s\\S]*^[-*\\s`]*C02\\s+P3\\s+desk[`\\s]*$)(?=[\\s\\S]*^[-*\\s`]*C04\\s+P1\\s+net[`\\s]*$)(?=[\\s\\S]*^[-*\\s`]*C07\\s+P3\\s+app[`\\s]*$)(?=[\\s\\S]*^[-*\\s`]*C06\\s+P3\\s+desk[`\\s]*$)(?=[\\s\\S]*^[-*\\s`]*C01\\s+P1\\s+sec[`\\s]*$)(?=[\\s\\S]*^[-*\\s`]*C08\\s+P2\\s+net[`\\s]*$)"
+      }
+    }
+  ]
+}

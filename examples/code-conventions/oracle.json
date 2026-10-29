@@ -1,0 +1,105 @@
+{
+  "work": {
+    "work": "A developer on the Acme billing team writes small Python modules for the team codebase from a short spec, following the team conventions, and replies with the complete module.",
+    "domainWord": "codebase",
+    "deliverableWord": "module"
+  },
+  "tasks": [
+    {
+      "id": "code/discounts",
+      "domain": "billing-code",
+      "prompt": "Write the module `discounts.py` for the billing codebase, following the team coding standards. It must define `apply_discount(amount_cents, percent)`: the amount after a `percent` discount (an integer 0 to 100), i.e. amount * (100 - percent) / 100. A negative amount or a percent outside 0..100 is invalid input. Reply with the complete module in one ```python code block.",
+      "sources": {
+        "CODING-STANDARDS.md": "# Acme billing codebase -- coding standards\n\nThese apply to every module in the billing codebase.\n\n1. Money is always an integer number of cents (`int`). Functions take cents and return cents.\n   Never return a float, and never compute money with floats (`0.1 + 0.2` is not `0.3`).\n2. When a cents result has a fractional part, round HALF AWAY FROM ZERO: 12.5 -> 13, -12.5 -> -13,\n   12.4 -> 12. Python's built-in `round()` rounds half to even and must not be used for money.\n3. Invalid input raises the team error type. Every module defines it at top level, exactly:\n\n       class AcmeError(ValueError):\n           def __init__(self, code, message=\"\"):\n               super().__init__(f\"{code}: {message}\")\n               self.code = code\n\n   Error codes: `E_NEG` a negative amount where none is allowed, `E_RANGE` a count, percentage or\n   rate outside its allowed range, `E_FORMAT` a malformed string (amount, date, ...).\n",
+        "CALENDAR.md": "# Acme company calendar -- business days\n\nThese rules apply to every date calculation in the codebase.\n\n- Dates go in and come out as ISO strings `YYYY-MM-DD`. A malformed date string is invalid input\n  (team error type, code `E_FORMAT`).\n- A business day is Monday to Friday that is not a company holiday.\n- Company holidays: 2026-11-26, 2026-11-27, 2026-12-24, 2026-12-25, 2026-12-31, 2027-01-01.\n- A date that must be a business day but is not one ROLLS FORWARD to the next business day.\n"
+      },
+      "expect": {
+        "tests": {
+          "lang": "python",
+          "module": "discounts",
+          "code": "from discounts import apply_discount, AcmeError\nassert issubclass(AcmeError, ValueError), \"AcmeError must subclass ValueError\"\nassert apply_discount(1000, 10) == 900, \"basic\"\nr = apply_discount(1015, 30)\nassert r == 711 and isinstance(r, int), f\"1015 less 30% is 710.5 -> 711 (got {r!r})\"\nassert apply_discount(1005, 50) == 503, \"502.5 rounds half away from zero to 503\"\nassert apply_discount(1, 50) == 1, \"0.5 rounds to 1\"\nassert apply_discount(0, 0) == 0\nfor bad, code in [((100, 101), \"E_RANGE\"), ((100, -1), \"E_RANGE\"), ((-5, 10), \"E_NEG\")]:\n    try:\n        apply_discount(*bad); raise SystemExit(f\"no error for {bad}\")\n    except AcmeError as e:\n        assert e.code == code, f\"{bad}: code {e.code!r}, want {code}\"\n"
+        }
+      }
+    },
+    {
+      "id": "code/split",
+      "domain": "billing-code",
+      "prompt": "Write the module `splitting.py` for the billing codebase, following the team coding standards. It must define `split_evenly(total_cents, n)`: split a total into `n` parts that differ by at most one cent, larger parts first, summing exactly to the total. `n` below 1 or a negative total is invalid input. Reply with the complete module in one ```python code block.",
+      "sources": {
+        "CODING-STANDARDS.md": "# Acme billing codebase -- coding standards\n\nThese apply to every module in the billing codebase.\n\n1. Money is always an integer number of cents (`int`). Functions take cents and return cents.\n   Never return a float, and never compute money with floats (`0.1 + 0.2` is not `0.3`).\n2. When a cents result has a fractional part, round HALF AWAY FROM ZERO: 12.5 -> 13, -12.5 -> -13,\n   12.4 -> 12. Python's built-in `round()` rounds half to even and must not be used for money.\n3. Invalid input raises the team error type. Every module defines it at top level, exactly:\n\n       class AcmeError(ValueError):\n           def __init__(self, code, message=\"\"):\n               super().__init__(f\"{code}: {message}\")\n               self.code = code\n\n   Error codes: `E_NEG` a negative amount where none is allowed, `E_RANGE` a count, percentage or\n   rate outside its allowed range, `E_FORMAT` a malformed string (amount, date, ...).\n",
+        "CALENDAR.md": "# Acme company calendar -- business days\n\nThese rules apply to every date calculation in the codebase.\n\n- Dates go in and come out as ISO strings `YYYY-MM-DD`. A malformed date string is invalid input\n  (team error type, code `E_FORMAT`).\n- A business day is Monday to Friday that is not a company holiday.\n- Company holidays: 2026-11-26, 2026-11-27, 2026-12-24, 2026-12-25, 2026-12-31, 2027-01-01.\n- A date that must be a business day but is not one ROLLS FORWARD to the next business day.\n"
+      },
+      "expect": {
+        "tests": {
+          "lang": "python",
+          "module": "splitting",
+          "code": "from splitting import split_evenly, AcmeError\nassert split_evenly(1000, 3) == [334, 333, 333], \"1000/3\"\nassert split_evenly(5, 5) == [1, 1, 1, 1, 1]\nassert split_evenly(0, 2) == [0, 0]\nassert all(isinstance(x, int) for x in split_evenly(1001, 4)), \"parts must be int cents\"\nfor bad, code in [((100, 0), \"E_RANGE\"), ((-1, 2), \"E_NEG\")]:\n    try:\n        split_evenly(*bad); raise SystemExit(f\"no error for {bad}\")\n    except AcmeError as e:\n        assert e.code == code, f\"{bad}: code {e.code!r}, want {code}\"\n"
+        }
+      }
+    },
+    {
+      "id": "code/parse",
+      "domain": "billing-code",
+      "prompt": "Write the module `money_parse.py` for the billing codebase, following the team coding standards. It must define `parse_amount(text)`: parse an amount such as `\"$1,234.56\"`, `\"12\"`, `\"0.5\"` or `\"-$3.10\"` into cents. Allowed: an optional leading `-`, an optional `$`, digits with optional comma thousands separators in groups of three, and an optional `.` followed by one or two digits. Anything else is malformed. Reply with the complete module in one ```python code block.",
+      "sources": {
+        "CODING-STANDARDS.md": "# Acme billing codebase -- coding standards\n\nThese apply to every module in the billing codebase.\n\n1. Money is always an integer number of cents (`int`). Functions take cents and return cents.\n   Never return a float, and never compute money with floats (`0.1 + 0.2` is not `0.3`).\n2. When a cents result has a fractional part, round HALF AWAY FROM ZERO: 12.5 -> 13, -12.5 -> -13,\n   12.4 -> 12. Python's built-in `round()` rounds half to even and must not be used for money.\n3. Invalid input raises the team error type. Every module defines it at top level, exactly:\n\n       class AcmeError(ValueError):\n           def __init__(self, code, message=\"\"):\n               super().__init__(f\"{code}: {message}\")\n               self.code = code\n\n   Error codes: `E_NEG` a negative amount where none is allowed, `E_RANGE` a count, percentage or\n   rate outside its allowed range, `E_FORMAT` a malformed string (amount, date, ...).\n",
+        "CALENDAR.md": "# Acme company calendar -- business days\n\nThese rules apply to every date calculation in the codebase.\n\n- Dates go in and come out as ISO strings `YYYY-MM-DD`. A malformed date string is invalid input\n  (team error type, code `E_FORMAT`).\n- A business day is Monday to Friday that is not a company holiday.\n- Company holidays: 2026-11-26, 2026-11-27, 2026-12-24, 2026-12-25, 2026-12-31, 2027-01-01.\n- A date that must be a business day but is not one ROLLS FORWARD to the next business day.\n"
+      },
+      "expect": {
+        "tests": {
+          "lang": "python",
+          "module": "money_parse",
+          "code": "from money_parse import parse_amount, AcmeError\nassert parse_amount(\"$1,234.56\") == 123456\nassert parse_amount(\"12\") == 1200 and isinstance(parse_amount(\"12\"), int)\nassert parse_amount(\"0.5\") == 50\nassert parse_amount(\"-$3.10\") == -310\nassert parse_amount(\"0.29\") == 29, \"0.29 must be exactly 29 cents\"\nfor bad in [\"abc\", \"1,23.4\", \"1.234\", \"\", \"$\"]:\n    try:\n        parse_amount(bad); raise SystemExit(f\"no error for {bad!r}\")\n    except AcmeError as e:\n        assert e.code == \"E_FORMAT\", f\"{bad!r}: code {e.code!r}\"\n"
+        }
+      }
+    },
+    {
+      "id": "code/add-days",
+      "domain": "billing-code",
+      "prompt": "Write the module `bizdays.py` for the billing codebase, following the team coding standards and the company calendar. It must define `add_business_days(date, n)`: the date `n` business days after `date` (n >= 0). With n = 0 it returns `date` itself if that is a business day, otherwise the next business day. A negative `n` is invalid input. Reply with the complete module in one ```python code block.",
+      "sources": {
+        "CODING-STANDARDS.md": "# Acme billing codebase -- coding standards\n\nThese apply to every module in the billing codebase.\n\n1. Money is always an integer number of cents (`int`). Functions take cents and return cents.\n   Never return a float, and never compute money with floats (`0.1 + 0.2` is not `0.3`).\n2. When a cents result has a fractional part, round HALF AWAY FROM ZERO: 12.5 -> 13, -12.5 -> -13,\n   12.4 -> 12. Python's built-in `round()` rounds half to even and must not be used for money.\n3. Invalid input raises the team error type. Every module defines it at top level, exactly:\n\n       class AcmeError(ValueError):\n           def __init__(self, code, message=\"\"):\n               super().__init__(f\"{code}: {message}\")\n               self.code = code\n\n   Error codes: `E_NEG` a negative amount where none is allowed, `E_RANGE` a count, percentage or\n   rate outside its allowed range, `E_FORMAT` a malformed string (amount, date, ...).\n",
+        "CALENDAR.md": "# Acme company calendar -- business days\n\nThese rules apply to every date calculation in the codebase.\n\n- Dates go in and come out as ISO strings `YYYY-MM-DD`. A malformed date string is invalid input\n  (team error type, code `E_FORMAT`).\n- A business day is Monday to Friday that is not a company holiday.\n- Company holidays: 2026-11-26, 2026-11-27, 2026-12-24, 2026-12-25, 2026-12-31, 2027-01-01.\n- A date that must be a business day but is not one ROLLS FORWARD to the next business day.\n"
+      },
+      "expect": {
+        "tests": {
+          "lang": "python",
+          "module": "bizdays",
+          "code": "from bizdays import add_business_days, AcmeError\nassert add_business_days(\"2026-11-02\", 1) == \"2026-11-03\", \"plain weekday\"\nassert add_business_days(\"2026-11-06\", 1) == \"2026-11-09\", \"Friday + 1 skips the weekend\"\nassert add_business_days(\"2026-11-25\", 1) == \"2026-11-30\", \"26th and 27th are company holidays\"\nassert add_business_days(\"2026-12-23\", 2) == \"2026-12-29\", \"24th and 25th are holidays\"\nassert add_business_days(\"2026-12-31\", 0) == \"2027-01-04\", \"n=0 on a holiday rolls forward past 2027-01-01\"\nfor bad, code in [((\"2026-11-02\", -1), \"E_RANGE\"), ((\"2026-13-01\", 1), \"E_FORMAT\"), ((\"11/02/2026\", 1), \"E_FORMAT\")]:\n    try:\n        add_business_days(*bad); raise SystemExit(f\"no error for {bad}\")\n    except AcmeError as e:\n        assert e.code == code, f\"{bad}: code {e.code!r}, want {code}\"\n"
+        }
+      }
+    },
+    {
+      "id": "code/due-date",
+      "domain": "billing-code",
+      "prompt": "Write the module `terms.py` for the billing codebase, following the team coding standards and the company calendar. It must define `due_date(issue_date, terms_days)`: the invoice due date, `terms_days` calendar days after `issue_date`; the due date must be a business day. A negative `terms_days` is invalid input. Reply with the complete module in one ```python code block.",
+      "sources": {
+        "CODING-STANDARDS.md": "# Acme billing codebase -- coding standards\n\nThese apply to every module in the billing codebase.\n\n1. Money is always an integer number of cents (`int`). Functions take cents and return cents.\n   Never return a float, and never compute money with floats (`0.1 + 0.2` is not `0.3`).\n2. When a cents result has a fractional part, round HALF AWAY FROM ZERO: 12.5 -> 13, -12.5 -> -13,\n   12.4 -> 12. Python's built-in `round()` rounds half to even and must not be used for money.\n3. Invalid input raises the team error type. Every module defines it at top level, exactly:\n\n       class AcmeError(ValueError):\n           def __init__(self, code, message=\"\"):\n               super().__init__(f\"{code}: {message}\")\n               self.code = code\n\n   Error codes: `E_NEG` a negative amount where none is allowed, `E_RANGE` a count, percentage or\n   rate outside its allowed range, `E_FORMAT` a malformed string (amount, date, ...).\n",
+        "CALENDAR.md": "# Acme company calendar -- business days\n\nThese rules apply to every date calculation in the codebase.\n\n- Dates go in and come out as ISO strings `YYYY-MM-DD`. A malformed date string is invalid input\n  (team error type, code `E_FORMAT`).\n- A business day is Monday to Friday that is not a company holiday.\n- Company holidays: 2026-11-26, 2026-11-27, 2026-12-24, 2026-12-25, 2026-12-31, 2027-01-01.\n- A date that must be a business day but is not one ROLLS FORWARD to the next business day.\n"
+      },
+      "expect": {
+        "tests": {
+          "lang": "python",
+          "module": "terms",
+          "code": "from terms import due_date, AcmeError\nassert due_date(\"2026-11-02\", 30) == \"2026-12-02\", \"plain\"\nassert due_date(\"2026-11-02\", 25) == \"2026-11-30\", \"lands on 11-27 (holiday) -> rolls to Monday 11-30\"\nassert due_date(\"2026-12-01\", 23) == \"2026-12-28\", \"12-24 and 12-25 are holidays, then a weekend\"\nassert due_date(\"2026-12-01\", 30) == \"2027-01-04\", \"12-31 is a holiday, 2027-01-01 too, then a weekend\"\nfor bad, code in [((\"2026-11-02\", -1), \"E_RANGE\"), ((\"2026-02-30\", 5), \"E_FORMAT\")]:\n    try:\n        due_date(*bad); raise SystemExit(f\"no error for {bad}\")\n    except AcmeError as e:\n        assert e.code == code, f\"{bad}: code {e.code!r}, want {code}\"\n"
+        }
+      }
+    },
+    {
+      "id": "code/late-fee",
+      "domain": "billing-code",
+      "prompt": "Write the module `fees.py` for the billing codebase, following the team coding standards and the company calendar. It must define `late_fee(amount_cents, due_date, paid_date)`: 1.5% of the amount for each business day late, where the business days late are the business days d with due_date < d <= paid_date. Paid on or before the due date means no fee. A negative amount is invalid input. Reply with the complete module in one ```python code block.",
+      "sources": {
+        "CODING-STANDARDS.md": "# Acme billing codebase -- coding standards\n\nThese apply to every module in the billing codebase.\n\n1. Money is always an integer number of cents (`int`). Functions take cents and return cents.\n   Never return a float, and never compute money with floats (`0.1 + 0.2` is not `0.3`).\n2. When a cents result has a fractional part, round HALF AWAY FROM ZERO: 12.5 -> 13, -12.5 -> -13,\n   12.4 -> 12. Python's built-in `round()` rounds half to even and must not be used for money.\n3. Invalid input raises the team error type. Every module defines it at top level, exactly:\n\n       class AcmeError(ValueError):\n           def __init__(self, code, message=\"\"):\n               super().__init__(f\"{code}: {message}\")\n               self.code = code\n\n   Error codes: `E_NEG` a negative amount where none is allowed, `E_RANGE` a count, percentage or\n   rate outside its allowed range, `E_FORMAT` a malformed string (amount, date, ...).\n",
+        "CALENDAR.md": "# Acme company calendar -- business days\n\nThese rules apply to every date calculation in the codebase.\n\n- Dates go in and come out as ISO strings `YYYY-MM-DD`. A malformed date string is invalid input\n  (team error type, code `E_FORMAT`).\n- A business day is Monday to Friday that is not a company holiday.\n- Company holidays: 2026-11-26, 2026-11-27, 2026-12-24, 2026-12-25, 2026-12-31, 2027-01-01.\n- A date that must be a business day but is not one ROLLS FORWARD to the next business day.\n"
+      },
+      "expect": {
+        "tests": {
+          "lang": "python",
+          "module": "fees",
+          "code": "from fees import late_fee, AcmeError\nassert late_fee(10000, \"2026-11-02\", \"2026-11-02\") == 0\nassert late_fee(10000, \"2026-11-02\", \"2026-11-04\") == 300, \"2 business days\"\nassert late_fee(10000, \"2026-12-23\", \"2026-12-29\") == 300, \"24/25 are holidays, 26/27 weekend: 2 business days\"\nr = late_fee(300, \"2026-11-02\", \"2026-11-03\")\nassert r == 5 and isinstance(r, int), f\"4.5 cents rounds half away from zero to 5 (got {r!r})\"\nassert late_fee(10000, \"2026-11-25\", \"2026-11-30\") == 150, \"only 11-30 is a business day\"\ntry:\n    late_fee(-1, \"2026-11-02\", \"2026-11-03\"); raise SystemExit(\"no error for negative amount\")\nexcept AcmeError as e:\n    assert e.code == \"E_NEG\", f\"code {e.code!r}\"\n"
+        }
+      }
+    }
+  ]
+}
