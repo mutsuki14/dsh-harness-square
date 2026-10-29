@@ -140,14 +140,30 @@ The checker grades only the value on the first line. Three independent improveme
 | after training task 2 (warm-started from task 1) | **15/18** | **18/18** | **14/18** |
 | ceiling: base with both handbooks in every task | 18/18 | | |
 
-- After task 1, the net-revenue tasks went to 6/6 and nothing else moved. After task 2, which started from
-  task 1's harness, the KPI tasks that need both handbooks also passed. Across the three runs that is
-  2/54 → 47/54 (87%), with the ceiling at 100%.
-- Leakage check: no held-out answer or held-out period appears anywhere in the adopted harnesses or the
-  library. The only number that matches is `= 12`, which is the training task's own answer, used as a
-  formatting example.
-- Run 3's misses were not wrong figures: two tool calls (its system prompt kept the base wording "do the
-  work with your tools", and the toolless evaluator cannot run tools), one empty answer, and one refusal.
+Across those three runs that is 2/54 → 47/54 (87%). No held-out answer or held-out period appears in any
+adopted harness or library; the only matching number, `= 12`, is the training task's own answer, used as
+a formatting example.
+
+**After the reference-alignment pass** (restored harness2 prompt rules, budgeted evidence, tool-agnostic
+base prompt, plus two fixes below), three new independent runs, same tasks and checker:
+
+| harness after training task 2 | run 4 | run 5 | run 6 |
+|---|---|---|---|
+| current version | **18/18** | **18/18** | **18/18** |
+
+54/54 against 47/54 before. The intermediate runs that led there are recorded because each one exposed a
+real defect:
+
+| intermediate run | held-out | what went wrong | fix |
+|---|---|---|---|
+| warm start, before fix | 12/18 | task 2 rewrote task 1's skill to "apply only the exclusions this handbook states", so `QA-` and cancelled rules were dropped for revenue KPIs | prompts: inherited conventions stay in force; absence is not contradiction; add, never narrow |
+| `--no-warm-start` (harness2 reference: library only) | 5/18 | task 2 starts from base and only reads task 1's harness in the library, so the data conventions did not carry over | none needed: warm start is this port's default for this reason |
+| warm start, after fix 1 (one of two runs) | 6/18 | task 2's base run was already right (the handbook was attached), so the composer kept the base and the dashboard convention was never recorded | prompts: a standing convention declared in the material is domain knowledge, encoded even when the run succeeded |
+
+Caveats. Both prompt fixes were motivated by failures on this same family; the held-out tasks were never
+seen by the method, but the prompts were developed while watching it, so a fresh task family is needed to
+confirm the fixes generalise. The ledger families below were not re-run after these changes.
+
 - This family tests what a harness is for: carrying conventions learned on one task into later ones. It
   does not show that the method makes the model better at arithmetic. The ledger families below show it
   does not.
@@ -168,11 +184,33 @@ What the held-out runs show, honestly:
   starting harness. This matches harness2 (the finals-only pool has no base fallback); the CLI now prints
   `adopted=none (selection failed: …; kept base)` instead of an empty label.
 
+### Alignment with the harness2 reference
+
+A module-by-module comparison with `google-research/harness2` (`core/{recursion,selection,context,tree,prompts,schedule}.py`)
+found the recursion, selection pool, trivial selection, ledger and library gating already matched. What was
+missing or weakened, and is now restored or adapted:
+
+- **Prompts**: the full GENERALIZE block (write the fact itself, not the procedure for rediscovering it;
+  labelled workspace facts; library harnesses must be copied and re-verified), the DOM encoding and
+  hard rules, the aggregate's "read the base set as one distribution" and "open what each side produced",
+  the selector's full CONFORMANCE / FIDELITY / CONSISTENCY / FITNESS criteria and artifact-only framing,
+  and the reflector's calibration rules (rejected candidates are evidence, prefer `confounded`).
+- **Evidence**: the reference serves full trajectories as files; a single DSH call cannot, so the document
+  now shrinks per-rollout budgets until it fits instead of clipping the end (which used to drop the pool
+  and library), carries the reference's reading guide, and marks elisions as ours. Reflection now sees
+  each rollout's deliverable.
+- **Validation**: scripts must compile (`python3` / `bash -n` / `node --check`), like harness2's `_py_compiles`.
+- **Schedule**: domains run concurrently with tasks ordered inside each domain (`--domain-workers`, the
+  reference's `--workers`); results report `adoptedIsBase` (`chosen_tree_is_base`); `--no-warm-start`
+  reproduces the reference's library-only behaviour.
+
 Bugs these runs found and fixed: tool-call markup counted as a deliverable; probe limitation written into the
 harness; snake_case skills ignored by dsh; YAML-invalid skill frontmatter ignored by dsh; headless workspaces
 reading the outer repo; shared-cwd contamination between workflow probes and writes into the caller's
 workspace; skill triggers naming the wrong tool; candidate policies not enforced in headless probes; reports
-lost when a workflow child's structured output failed; cache tokens missing from cost; an adoption whose
+lost when a workflow child's structured output failed; cache tokens missing from cost; the base system prompt
+saying "with your tools", which one-shot probes answered with tool calls (one-shot executors now add a
+runtime note instead, outside the harness); an adoption whose
 reflection wrote `NO_ENTRY` lost as the next task's warm start (the domain now keeps a `current/` harness
 separately from the lesson-gated library entries); long non-streaming
 API calls cut mid-generation (`terminated`), which polluted eval results as wrong answers (the client now
