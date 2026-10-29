@@ -1,0 +1,87 @@
+{
+  "work": {
+    "work": "An analyst on the Acme analytics team turns raw order exports into the figures the team reports, following the team conventions.",
+    "domainWord": "analytics area",
+    "deliverableWord": "report"
+  },
+  "tasks": [
+    {
+      "id": "acme/calc-1",
+      "domain": "acme-analytics",
+      "prompt": "Compute net revenue for 2026-09 from orders.csv, following the team's data conventions. First line exactly 'Net revenue: <USD with two decimals>', then a one-line note.",
+      "sources": {
+        "orders.csv": "order_id,date,customer_id,kind,status,amount\nO5373,2026-09-08,C701,sale,completed,18772\nO5374,2026-09-18,C758,sale,completed,46767\nO5375,2026-09-18,C873,sale,completed,13530\nO5376,2026-09-06,QA-30,refund,completed,8903\nO5377,2026-09-16,QA-50,refund,completed,27254\nO5378,2026-09-03,C212,sale,completed,52759\nO5379,2026-09-28,C864,sale,completed,2920\nO5380,2026-09-14,C640,refund,completed,48021\nO5381,2026-09-28,C301,sale,completed,56994\nO5382,2026-09-27,C790,refund,completed,12736\nO5383,2026-09-22,C821,sale,completed,53293\nO5384,2026-09-25,C857,sale,cancelled,26831\nO5385,2026-09-22,C950,sale,completed,42674\nO5386,2026-09-19,C122,sale,completed,21559\n",
+        "HANDBOOK-data.md": "# Acme analytics -- data conventions\n\nThese apply to every export the analytics team works with.\n\n- `amount` in orders.csv is an integer number of US cents, never dollars. 129900 means $1,299.00.\n- Customer ids that start with `QA-` are internal test accounts. Exclude their rows from every metric.\n- Rows with `kind` = `refund` carry a positive amount and reduce net revenue.\n- Sale rows with `status` = `cancelled` never count.\n- Net revenue = counted sales minus counted refunds.\n",
+        "HANDBOOK-dashboard.md": "# Acme analytics -- dashboard conventions\n\nThe dashboard ingests the first line of every report automatically. It must be exactly\n\n    KPI <CODE> <period> = <value>\n\nwith no markdown, no currency symbol and no thousands separator. Codes:\n\n- `NREV`: net revenue in whole US dollars, rounded half up.\n- `ORDS`: number of counted sale rows (refunds are not orders).\n\nExample: `KPI ORDS 2026-05 = 41`. Anything after the first line is free text for humans.\n"
+      },
+      "expect": {
+        "pattern": "^Net revenue: \\$?2,?485\\.11$"
+      }
+    },
+    {
+      "id": "acme/calc-2",
+      "domain": "acme-analytics",
+      "prompt": "Compute net revenue for 2026-10 from orders.csv, following the team's data conventions. First line exactly 'Net revenue: <USD with two decimals>', then a one-line note.",
+      "sources": {
+        "orders.csv": "order_id,date,customer_id,kind,status,amount\nO7004,2026-10-05,C694,refund,completed,26577\nO7005,2026-10-08,QA-66,sale,completed,61412\nO7006,2026-10-09,C111,sale,completed,39821\nO7007,2026-10-20,C860,sale,cancelled,53243\nO7008,2026-10-24,C490,sale,cancelled,47223\nO7009,2026-10-14,C127,sale,completed,30915\nO7010,2026-10-22,C407,sale,completed,11901\nO7011,2026-10-19,C590,sale,cancelled,32036\nO7012,2026-10-04,QA-24,refund,completed,54572\nO7013,2026-10-22,C153,sale,cancelled,5956\nO7014,2026-10-13,C427,refund,completed,10214\nO7015,2026-10-06,C479,sale,completed,38158\nO7016,2026-10-13,QA-82,refund,completed,30317\nO7017,2026-10-08,C191,sale,completed,30626\n",
+        "HANDBOOK-data.md": "# Acme analytics -- data conventions\n\nThese apply to every export the analytics team works with.\n\n- `amount` in orders.csv is an integer number of US cents, never dollars. 129900 means $1,299.00.\n- Customer ids that start with `QA-` are internal test accounts. Exclude their rows from every metric.\n- Rows with `kind` = `refund` carry a positive amount and reduce net revenue.\n- Sale rows with `status` = `cancelled` never count.\n- Net revenue = counted sales minus counted refunds.\n",
+        "HANDBOOK-dashboard.md": "# Acme analytics -- dashboard conventions\n\nThe dashboard ingests the first line of every report automatically. It must be exactly\n\n    KPI <CODE> <period> = <value>\n\nwith no markdown, no currency symbol and no thousands separator. Codes:\n\n- `NREV`: net revenue in whole US dollars, rounded half up.\n- `ORDS`: number of counted sale rows (refunds are not orders).\n\nExample: `KPI ORDS 2026-05 = 41`. Anything after the first line is free text for humans.\n"
+      },
+      "expect": {
+        "pattern": "^Net revenue: \\$?1,?146\\.30$"
+      }
+    },
+    {
+      "id": "acme/format-1",
+      "domain": "acme-analytics",
+      "prompt": "Report the 2026-11 order count from orders.csv for the dashboard, using the team's standard dashboard line.",
+      "sources": {
+        "orders.csv": "order_id,date,customer_id,kind,status,amount\nO5347,2026-11-04,C968,refund,completed,44625\nO5348,2026-11-19,C731,sale,completed,14626\nO5349,2026-11-05,C259,sale,completed,33980\nO5350,2026-11-21,C984,sale,completed,2183\nO5351,2026-11-11,C137,sale,completed,24543\nO5352,2026-11-03,C193,sale,completed,56244\nO5353,2026-11-27,C467,refund,completed,52613\nO5354,2026-11-27,C506,sale,completed,17340\nO5355,2026-11-27,C877,sale,completed,42333\nO5356,2026-11-17,C799,sale,completed,21310\nO5357,2026-11-22,C651,sale,completed,4588\nO5358,2026-11-07,C556,sale,completed,15432\nO5359,2026-11-18,C822,sale,completed,47173\nO5360,2026-11-23,C552,sale,completed,15142\n",
+        "HANDBOOK-data.md": "# Acme analytics -- data conventions\n\nThese apply to every export the analytics team works with.\n\n- `amount` in orders.csv is an integer number of US cents, never dollars. 129900 means $1,299.00.\n- Customer ids that start with `QA-` are internal test accounts. Exclude their rows from every metric.\n- Rows with `kind` = `refund` carry a positive amount and reduce net revenue.\n- Sale rows with `status` = `cancelled` never count.\n- Net revenue = counted sales minus counted refunds.\n",
+        "HANDBOOK-dashboard.md": "# Acme analytics -- dashboard conventions\n\nThe dashboard ingests the first line of every report automatically. It must be exactly\n\n    KPI <CODE> <period> = <value>\n\nwith no markdown, no currency symbol and no thousands separator. Codes:\n\n- `NREV`: net revenue in whole US dollars, rounded half up.\n- `ORDS`: number of counted sale rows (refunds are not orders).\n\nExample: `KPI ORDS 2026-05 = 41`. Anything after the first line is free text for humans.\n"
+      },
+      "expect": {
+        "pattern": "^KPI ORDS 2026-11 = 12$"
+      }
+    },
+    {
+      "id": "acme/format-2",
+      "domain": "acme-analytics",
+      "prompt": "Report the 2026-12 order count from orders.csv for the dashboard, using the team's standard dashboard line.",
+      "sources": {
+        "orders.csv": "order_id,date,customer_id,kind,status,amount\nO6473,2026-12-04,C286,sale,completed,36252\nO6474,2026-12-22,C360,refund,completed,23477\nO6475,2026-12-13,C234,sale,completed,16486\nO6476,2026-12-14,C831,sale,completed,42757\nO6477,2026-12-10,C798,refund,completed,28065\nO6478,2026-12-25,C690,sale,completed,57471\nO6479,2026-12-09,C444,sale,completed,33092\nO6480,2026-12-07,C777,sale,completed,31788\nO6481,2026-12-14,C563,sale,completed,51343\nO6482,2026-12-28,C878,sale,completed,17845\nO6483,2026-12-19,C304,sale,completed,31124\nO6484,2026-12-15,C494,refund,completed,24051\nO6485,2026-12-08,C854,sale,completed,38765\nO6486,2026-12-22,C562,refund,completed,43574\n",
+        "HANDBOOK-data.md": "# Acme analytics -- data conventions\n\nThese apply to every export the analytics team works with.\n\n- `amount` in orders.csv is an integer number of US cents, never dollars. 129900 means $1,299.00.\n- Customer ids that start with `QA-` are internal test accounts. Exclude their rows from every metric.\n- Rows with `kind` = `refund` carry a positive amount and reduce net revenue.\n- Sale rows with `status` = `cancelled` never count.\n- Net revenue = counted sales minus counted refunds.\n",
+        "HANDBOOK-dashboard.md": "# Acme analytics -- dashboard conventions\n\nThe dashboard ingests the first line of every report automatically. It must be exactly\n\n    KPI <CODE> <period> = <value>\n\nwith no markdown, no currency symbol and no thousands separator. Codes:\n\n- `NREV`: net revenue in whole US dollars, rounded half up.\n- `ORDS`: number of counted sale rows (refunds are not orders).\n\nExample: `KPI ORDS 2026-05 = 41`. Anything after the first line is free text for humans.\n"
+      },
+      "expect": {
+        "pattern": "^KPI ORDS 2026-12 = 10$"
+      }
+    },
+    {
+      "id": "acme/both-1",
+      "domain": "acme-analytics",
+      "prompt": "Report 2027-01 net revenue from orders.csv for the dashboard, following the team's data conventions and using the team's standard dashboard line.",
+      "sources": {
+        "orders.csv": "order_id,date,customer_id,kind,status,amount\nO1300,2027-01-12,C598,sale,completed,24496\nO1301,2027-01-08,C393,sale,completed,39722\nO1302,2027-01-24,C625,sale,completed,11740\nO1303,2027-01-08,C232,sale,completed,32775\nO1304,2027-01-09,QA-53,sale,completed,14915\nO1305,2027-01-10,C246,sale,completed,14716\nO1306,2027-01-06,QA-61,sale,completed,53734\nO1307,2027-01-11,C137,refund,completed,37164\nO1308,2027-01-27,C129,refund,completed,41797\nO1309,2027-01-27,QA-54,sale,completed,1740\nO1310,2027-01-26,C324,sale,completed,17293\nO1311,2027-01-20,C863,refund,completed,49603\nO1312,2027-01-03,QA-28,sale,completed,37474\nO1313,2027-01-21,QA-93,sale,cancelled,27459\n",
+        "HANDBOOK-data.md": "# Acme analytics -- data conventions\n\nThese apply to every export the analytics team works with.\n\n- `amount` in orders.csv is an integer number of US cents, never dollars. 129900 means $1,299.00.\n- Customer ids that start with `QA-` are internal test accounts. Exclude their rows from every metric.\n- Rows with `kind` = `refund` carry a positive amount and reduce net revenue.\n- Sale rows with `status` = `cancelled` never count.\n- Net revenue = counted sales minus counted refunds.\n",
+        "HANDBOOK-dashboard.md": "# Acme analytics -- dashboard conventions\n\nThe dashboard ingests the first line of every report automatically. It must be exactly\n\n    KPI <CODE> <period> = <value>\n\nwith no markdown, no currency symbol and no thousands separator. Codes:\n\n- `NREV`: net revenue in whole US dollars, rounded half up.\n- `ORDS`: number of counted sale rows (refunds are not orders).\n\nExample: `KPI ORDS 2026-05 = 41`. Anything after the first line is free text for humans.\n"
+      },
+      "expect": {
+        "pattern": "^KPI NREV 2027-01 = 122$"
+      }
+    },
+    {
+      "id": "acme/both-2",
+      "domain": "acme-analytics",
+      "prompt": "Report 2027-02 net revenue from orders.csv for the dashboard, following the team's data conventions and using the team's standard dashboard line.",
+      "sources": {
+        "orders.csv": "order_id,date,customer_id,kind,status,amount\nO8150,2027-02-04,C959,refund,completed,24438\nO8151,2027-02-24,C940,sale,cancelled,25855\nO8152,2027-02-15,C571,sale,completed,42527\nO8153,2027-02-25,C699,sale,completed,57603\nO8154,2027-02-08,C608,sale,completed,5197\nO8155,2027-02-22,C623,sale,cancelled,12918\nO8156,2027-02-06,C988,sale,completed,34526\nO8157,2027-02-02,C100,refund,completed,61177\nO8158,2027-02-25,C874,sale,completed,43198\nO8159,2027-02-13,QA-46,sale,completed,42152\nO8160,2027-02-08,C822,sale,completed,3576\nO8161,2027-02-26,C520,sale,completed,49174\nO8162,2027-02-16,QA-20,sale,completed,51683\nO8163,2027-02-09,C412,sale,completed,30053\n",
+        "HANDBOOK-data.md": "# Acme analytics -- data conventions\n\nThese apply to every export the analytics team works with.\n\n- `amount` in orders.csv is an integer number of US cents, never dollars. 129900 means $1,299.00.\n- Customer ids that start with `QA-` are internal test accounts. Exclude their rows from every metric.\n- Rows with `kind` = `refund` carry a positive amount and reduce net revenue.\n- Sale rows with `status` = `cancelled` never count.\n- Net revenue = counted sales minus counted refunds.\n",
+        "HANDBOOK-dashboard.md": "# Acme analytics -- dashboard conventions\n\nThe dashboard ingests the first line of every report automatically. It must be exactly\n\n    KPI <CODE> <period> = <value>\n\nwith no markdown, no currency symbol and no thousands separator. Codes:\n\n- `NREV`: net revenue in whole US dollars, rounded half up.\n- `ORDS`: number of counted sale rows (refunds are not orders).\n\nExample: `KPI ORDS 2026-05 = 41`. Anything after the first line is free text for humans.\n"
+      },
+      "expect": {
+        "pattern": "^KPI NREV 2027-02 = 1802$"
+      }
+    }
+  ]
+}

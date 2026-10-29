@@ -124,9 +124,37 @@ End-to-end in a sandbox with `@deepseek-ai/dsh@0.2.1-rc.4` and `deepseek-flash` 
 | held-out eval (toolless, flash) | 200-row multi-currency ledger family (duplicates by `seq`, reversals by `ref`, half-even rounding per line). Base harness 11/12 and 11/12 across two runs; the harness adopted from one training task also scored 11/12 (4 held-out tasks × 3 repeats) |
 | held-out eval, 400 rows (toolless, flash) | base 2/8 and 3/8 (two runs); candidates from one improvement run: `inv1` 4/8, `agg1` 4/8, `dom1` 1/8. Almost every miss is the model hitting its 65,536-token output limit, not a wrong rule |
 
+### A task family where improvement is measurable: team conventions
+
+`examples/acme-conventions/` (reproduce with `examples/acme-conventions/run.sh`, flash only). Each of two
+training tasks shows one team handbook once: data conventions (amounts are cents, `QA-` accounts excluded,
+refunds subtract, cancelled sales never count) and the dashboard line (`KPI <CODE> <period> = <value>`).
+The six held-out tasks are new months with new data and **no handbook**. They ask for net revenue (needs
+the data handbook), the order-count KPI (needs the dashboard handbook) or the revenue KPI (needs both).
+The checker grades only the value on the first line. Three independent improvement runs, 6 tasks × 3 repeats each:
+
+| harness | run 1 | run 2 | run 3 |
+|---|---|---|---|
+| base (no handbook) | 1/18 | 1/18 | 0/18 |
+| after training task 1 (data handbook) | 6/18 | 6/18 | — |
+| after training task 2 (warm-started from task 1) | **15/18** | **18/18** | **14/18** |
+| ceiling: base with both handbooks in every task | 18/18 | | |
+
+- After task 1, the net-revenue tasks went to 6/6 and nothing else moved. After task 2, which started from
+  task 1's harness, the KPI tasks that need both handbooks also passed. Across the three runs that is
+  2/54 → 47/54 (87%), with the ceiling at 100%.
+- Leakage check: no held-out answer or held-out period appears anywhere in the adopted harnesses or the
+  library. The only number that matches is `= 12`, which is the training task's own answer, used as a
+  formatting example.
+- Run 3's misses were not wrong figures: two tool calls (its system prompt kept the base wording "do the
+  work with your tools", and the toolless evaluator cannot run tools), one empty answer, and one refusal.
+- This family tests what a harness is for: carrying conventions learned on one task into later ones. It
+  does not show that the method makes the model better at arithmetic. The ledger families below show it
+  does not.
+
 What the held-out runs show, honestly:
 
-- **No measured gain yet.** On the 200-row family the adopted harness was correct and transferred (a domain
+- **No measured gain on the ledger families.** On the 200-row family the adopted harness was correct and transferred (a domain
   skill with the rule order, per-line rounding and a removed-row audit) but tied the base at ~92%: the remaining
   misses are occasional slips of a few cents. A policy-driven family (rules only in a POLICY.md, 50 rows) and
   the 30- and 120-row families were solved 100% by the base harness.
@@ -144,7 +172,9 @@ Bugs these runs found and fixed: tool-call markup counted as a deliverable; prob
 harness; snake_case skills ignored by dsh; YAML-invalid skill frontmatter ignored by dsh; headless workspaces
 reading the outer repo; shared-cwd contamination between workflow probes and writes into the caller's
 workspace; skill triggers naming the wrong tool; candidate policies not enforced in headless probes; reports
-lost when a workflow child's structured output failed; cache tokens missing from cost; long non-streaming
+lost when a workflow child's structured output failed; cache tokens missing from cost; an adoption whose
+reflection wrote `NO_ENTRY` lost as the next task's warm start (the domain now keeps a `current/` harness
+separately from the lesson-gated library entries); long non-streaming
 API calls cut mid-generation (`terminated`), which polluted eval results as wrong answers (the client now
 streams); truncated answers (`finish_reason=length`) shown to the improver as an unexplained "PRODUCED
 NOTHING" (evidence now states the cause and every rollout's output tokens, and the toolless note warns that

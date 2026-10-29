@@ -1,0 +1,33 @@
+{
+  "work": {
+    "work": "An analyst on the Acme analytics team turns raw order exports into the figures the team reports, following the team conventions.",
+    "domainWord": "analytics area",
+    "deliverableWord": "report"
+  },
+  "tasks": [
+    {
+      "id": "acme/train-data",
+      "domain": "acme-analytics",
+      "prompt": "Compute net revenue for 2026-08 from orders.csv, following HANDBOOK-data.md. First line exactly 'Net revenue: <USD with two decimals>', then a one-line note.",
+      "sources": {
+        "orders.csv": "order_id,date,customer_id,kind,status,amount\nO6491,2026-08-11,QA-21,refund,completed,39478\nO6492,2026-08-24,C796,sale,completed,43708\nO6493,2026-08-15,C597,refund,completed,57176\nO6494,2026-08-04,C759,refund,completed,60420\nO6495,2026-08-21,C623,sale,cancelled,39531\nO6496,2026-08-19,C124,refund,completed,17977\nO6497,2026-08-19,QA-68,sale,cancelled,24383\nO6498,2026-08-22,C672,sale,completed,9840\nO6499,2026-08-18,C221,sale,completed,61355\nO6500,2026-08-06,C723,sale,completed,52276\nO6501,2026-08-06,C557,sale,completed,53825\nO6502,2026-08-20,QA-30,sale,completed,37379\nO6503,2026-08-22,C819,sale,completed,59134\nO6504,2026-08-03,C829,sale,completed,34704\n",
+        "HANDBOOK-data.md": "# Acme analytics -- data conventions\n\nThese apply to every export the analytics team works with.\n\n- `amount` in orders.csv is an integer number of US cents, never dollars. 129900 means $1,299.00.\n- Customer ids that start with `QA-` are internal test accounts. Exclude their rows from every metric.\n- Rows with `kind` = `refund` carry a positive amount and reduce net revenue.\n- Sale rows with `status` = `cancelled` never count.\n- Net revenue = counted sales minus counted refunds.\n"
+      },
+      "expect": {
+        "pattern": "^Net revenue: \\$?1,?792\\.69$"
+      }
+    },
+    {
+      "id": "acme/train-dash",
+      "domain": "acme-analytics",
+      "prompt": "Report the 2026-07 order count from orders.csv for the dashboard as HANDBOOK-dashboard.md describes.",
+      "sources": {
+        "orders.csv": "order_id,date,customer_id,kind,status,amount\nO2938,2026-07-09,C562,sale,completed,11514\nO2939,2026-07-21,C747,sale,completed,4221\nO2940,2026-07-25,C761,sale,completed,28702\nO2941,2026-07-23,C179,sale,completed,25815\nO2942,2026-07-20,C368,sale,completed,13517\nO2943,2026-07-04,C533,sale,completed,26724\nO2944,2026-07-03,C885,sale,completed,49616\nO2945,2026-07-03,C374,sale,completed,59465\nO2946,2026-07-12,C707,sale,completed,29728\nO2947,2026-07-02,C239,refund,completed,21562\nO2948,2026-07-18,C786,sale,completed,12553\nO2949,2026-07-05,C319,sale,completed,5585\nO2950,2026-07-19,C655,sale,completed,4198\nO2951,2026-07-26,C506,refund,completed,14961\n",
+        "HANDBOOK-dashboard.md": "# Acme analytics -- dashboard conventions\n\nThe dashboard ingests the first line of every report automatically. It must be exactly\n\n    KPI <CODE> <period> = <value>\n\nwith no markdown, no currency symbol and no thousands separator. Codes:\n\n- `NREV`: net revenue in whole US dollars, rounded half up.\n- `ORDS`: number of counted sale rows (refunds are not orders).\n\nExample: `KPI ORDS 2026-05 = 41`. Anything after the first line is free text for humans.\n"
+      },
+      "expect": {
+        "pattern": "^KPI ORDS 2026-07 = 12$"
+      }
+    }
+  ]
+}
